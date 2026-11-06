@@ -1,6 +1,6 @@
-// 轻量语法着色：按行切词，不依赖任何库（工作台的 Markdown 代码块、diff、终端共用）。纯函数，便于测试。
-export type TokenType = "kw" | "str" | "com" | "num" | "fn" | "type" | "plain";
-export interface Token {
+// 轻量语法着色：按行切词，不依赖任何库（工单详情的 Markdown 代码块、diff、终端共用）。纯函数，便于测试。
+type TokenType = "kw" | "str" | "com" | "num" | "fn" | "type" | "plain";
+interface Token {
   type: TokenType;
   text: string;
 }
@@ -89,11 +89,11 @@ export function highlightLine(line: string, family: "ts" | "hash" | "json" | "sq
 }
 
 export const TOKEN_CLASS: Record<TokenType, string> = {
-  kw: "text-lavender-deep font-medium",
-  str: "text-mint-deep",
-  com: "text-ink-faint italic",
-  num: "text-amber-deep",
-  fn: "text-sky-deep",
-  type: "text-coral-deep",
+  kw: "text-fg-2 font-medium",
+  str: "text-success",
+  com: "text-fg-3 italic",
+  num: "text-warning",
+  fn: "text-accent",
+  type: "text-accent",
   plain: "",
 };

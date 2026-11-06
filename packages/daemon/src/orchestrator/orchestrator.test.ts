@@ -242,6 +242,21 @@ describe("事件翻译", () => {
     expect(hub.model.threads[t.threadId]!.lastText).toBe("你好，世界");
   });
 
+  it("思考：thinking_delta 建 streaming thinking entry，正文开始时收起并记下用时；不改线程预览", async () => {
+    const t = await start();
+    session().emit({ t: "turn_start", turn: 1 }, { t: "thinking_delta", delta: "先看" }, { t: "thinking_delta", delta: "代码" });
+    await settle();
+    expect(entriesOf(t).find((e) => e.kind === "thinking")).toMatchObject({ botId: BOT, text: "先看代码", streaming: true });
+    session().emit({ t: "text_delta", delta: "好的" }, { t: "text_done" }, { t: "thinking_delta", delta: "再想想" }, { t: "thinking_done" });
+    await settle();
+    expect(kinds(t)).toEqual(["user", "thinking", "bot", "thinking"]);
+    const [first, second] = entriesOf(t).filter((e) => e.kind === "thinking") as Extract<Entry, { kind: "thinking" }>[];
+    expect(first).toMatchObject({ text: "先看代码", streaming: false });
+    expect(first!.durationMs).toBeGreaterThanOrEqual(0);
+    expect(second).toMatchObject({ text: "再想想", streaming: false });
+    expect(hub.model.threads[t.threadId]!.lastText).toBe("好的");
+  });
+
   it("连续 tool 事件聚合成一个 tool_summary 并持续更新计数", async () => {
     const t = await start();
     session().emit(

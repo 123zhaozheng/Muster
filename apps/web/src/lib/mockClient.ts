@@ -1,30 +1,30 @@
-// OWNER: W1. 完整的离线模拟后端：实现协议里全部方法，所有状态变化都经 applyPush 推送，
+// 完整的离线模拟后端：实现协议里全部方法，所有状态变化都经 applyPush 推送，
 // 与真实 daemon 的行为一致（push 严格递增 seq，客户端先 hub.snapshot 再按序应用）。
+// 初始世界见 mock/demoData.ts。
 //
 //  - 主线：chat.send 由"Pip"识别 Bot 名 -> 流式回复 -> 派发卡 + 新任务
-//  - 任务：按脚本定时推进（工具摘要 / 审批 / diff / 测试 / 完成回调），支持 steer / queue / interrupt
+//  - 任务：按阶段推进（工具摘要 / 审批 / diff / 测试 / 完成回调），支持 steer / queue / interrupt；
+//    运行中的任务不报百分比，只有完成时给 100
 //  - fork / branch.adopt、触发器 CRUD 与 fire（观察 / 询问 / 自动三档）、事件、设备配对码
-//  - 二期：成员增改删（含原生自建成员）、模型目录 / provider / 模型列表 / 连通测试 / 默认模型（key 只记 hasApiKey）、任务进度平滑推进
+//  - 二期：成员增改删（含原生自建成员）、模型目录 / provider / 模型列表 / 连通测试 / 默认模型（key 只记 hasApiKey）
 import type {
   Approval, ApprovalId, Bot, BotId, Branch, DetectedAgent, Entry, EntryId, HubEvent, Methods, MethodName, ModelInfo, ModelProviderConfig,
   ModelRef, ModelSettings, NativeToolGroup, PushPayload, Snapshot, Task, TaskId, Thread, ThreadId, TriggerRule, WireError, WirePush,
 } from "@muster/protocol";
 import { MAIN_BOT_ID, MAIN_THREAD_ID } from "@muster/protocol";
-import { branches as fixtureBranches, entriesByThread, snapshot as fixtureSnapshot } from "@muster/protocol/fixtures";
 import { applyPush, modelFromSnapshot, snapshotOf, type HubModel } from "@muster/protocol/reducer";
 import type { MusterClient } from "@muster/protocol/client";
+import { buildDemoSeed, diffFor } from "./mock/demoData";
 import { parseDispatch } from "./mock/dispatchParser";
 import { KEYLESS_PROVIDERS, MOCK_CATALOG, MOCK_MODELS } from "./mock/modelData";
 
-export interface MockClientOptions {
+interface MockClientOptions {
   /** 任务脚本两步之间的间隔（毫秒），默认 2200。 */
   stepMs?: number;
   /** 流式回复每个片段的间隔（毫秒），默认 35。 */
   typeMs?: number;
   /** bot.detectAgents 模拟的扫描耗时（毫秒），默认 700。 */
   scanMs?: number;
-  /** 运行中任务进度平滑上涨的间隔（毫秒），默认 600；0 关闭。 */
-  progressMs?: number;
   /** model.test 的模拟耗时（毫秒）；默认 300~900 随机。 */
   testMs?: number;
 }
@@ -37,15 +37,13 @@ export interface MockClient extends MusterClient {
 type Timer = ReturnType<typeof setTimeout>;
 type NewEntry = Entry extends infer E ? (E extends Entry ? Omit<E, "id" | "threadId" | "ts"> : never) : never;
 
-const ISO_RE = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
 const DEFAULT_CWD = "D:/work/shop-api";
 
 const SAMPLE_FILES = ["src/payment/callback.ts", "src/payment/signature.ts", "src/order/service.ts", "tests/callback.test.ts", "package.json", "src/config.ts"];
-const SAMPLE_PATCH = "@@ -98,7 +98,8 @@\n-  if (signature !== expected) {\n+  if (signature !== expected && !isLegacySignature(req)) {\n     return res.status(401).json({ error: 'Invalid signature' })\n   }\n";
 
 const NEW_BOT_LOOKS: Array<Pick<Bot, "shape" | "color">> = [
-  { shape: "round", color: "rose" },
-  { shape: "egg", color: "butter" },
+  { shape: "round", color: "cream" },
+  { shape: "egg", color: "mint" },
   { shape: "blob", color: "sky" },
   { shape: "square", color: "lilac" },
   { shape: "flat", color: "peach" },
@@ -78,18 +76,9 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
   const stepMs = opts.stepMs ?? 2200;
   const typeMs = opts.typeMs ?? 35;
   const scanMs = opts.scanMs ?? 700;
-  const progressMs = opts.progressMs ?? 600;
 
-  // 夹具时间戳整体平移到"现在"，保证新条目的 ts 晚于旧条目，且侧栏的相对时间合理。
-  const shift = Date.now() - Date.parse(fixtureSnapshot.serverTime);
-  const rebased = <T,>(v: T): T => JSON.parse(JSON.stringify(v).replace(ISO_RE, (s) => new Date(Date.parse(s) + shift).toISOString())) as T;
-
-  let model: HubModel = modelFromSnapshot(rebased(fixtureSnapshot));
-  model = {
-    ...model,
-    entries: rebased(entriesByThread),
-    branches: Object.fromEntries(rebased(fixtureBranches).map((b) => [b.id, b])),
-  };
+  const demo = buildDemoSeed(Date.now());
+  let model: HubModel = { ...modelFromSnapshot(demo.snapshot), entries: demo.entries };
 
   const pushHandlers = new Set<(p: WirePush) => void>();
   const statusHandlers = new Set<(s: "connecting" | "open" | "closed") => void>();
@@ -99,8 +88,8 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
   const triggerApprovals = new Map<ApprovalId, TriggerRule>();
   const firedToday = new Map<string, number>();
   /** 已配置的模型 provider；key 只留在 apiKeys 里，永远不进 model / push。 */
-  const providers = new Map<string, ModelProviderConfig>();
-  const apiKeys = new Map<string, string>();
+  const providers = new Map<string, ModelProviderConfig>(demo.providers.map((p) => [p.id, p]));
+  const apiKeys = new Map<string, string>(Object.entries(demo.apiKeys));
   let disposed = false;
   let counter = 0;
   let lastTs = 0;
@@ -129,13 +118,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
 
   // ───────────────────────── 状态变更（一律走 applyPush） ─────────────────────────
 
-  /** 种子阶段静默落地：不占用 seq，也不推送（客户端会先拿 snapshot）。 */
-  let silent = true;
   const commit = (push: PushPayload) => {
-    if (silent) {
-      model = applyPush(model, push);
-      return;
-    }
     model = { ...applyPush(model, push), seq: model.seq + 1 };
     const msg: WirePush = { type: "push", seq: model.seq, push };
     queueMicrotask(() => pushHandlers.forEach((h) => h(msg)));
@@ -146,7 +129,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
       case "user": case "steer": case "bot": case "system": return trunc(e.text, 60);
       case "dispatch": return `已派发：${e.title}`;
       case "tool_summary": return `读取了 ${e.reads} 个文件 · 运行了 ${e.commands} 条命令`;
-      case "test_result": return `${e.passed} 通过 · ${e.failed} 失败`;
+      case "test_result": return e.failed ? `${e.passed} 项通过 · ${e.failed} 项失败` : `${e.passed} 项测试通过`;
       case "diff": return `修改了 ${e.files.length} 个文件`;
       case "approval": return model.approvals[e.approvalId]?.title.replace(/^.+? 想/, "想");
       case "choices": return e.prompt ?? "请选择";
@@ -228,6 +211,29 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     later(typeMs, tick);
   };
 
+  /** 流式追加一段思考（界面上折叠展示），收尾时记下用时；被打断时立即收尾且不再回调 done。 */
+  const streamThinking = (threadId: ThreadId, botId: BotId, text: string, alive: () => boolean, done?: () => void) => {
+    const first = append(threadId, { kind: "thinking", botId, text: "", streaming: true });
+    const startedAt = Date.now();
+    let i = 0;
+    const finish = () => {
+      const cur = model.entries[threadId]?.find((x) => x.id === first.id);
+      if (cur && cur.kind === "thinking") commit({ kind: "entry.replaced", entry: { ...cur, streaming: false, durationMs: Date.now() - startedAt } });
+    };
+    const tick = () => {
+      if (!alive()) return finish();
+      if (i >= text.length) {
+        finish();
+        done?.();
+        return;
+      }
+      commit({ kind: "entry.delta", threadId, entryId: first.id, delta: text.slice(i, i + 6) });
+      i += 6;
+      later(typeMs, tick);
+    };
+    later(typeMs, tick);
+  };
+
   // ───────────────────────── 任务脚本 ─────────────────────────
 
   const schedule = (r: Run) => {
@@ -277,13 +283,13 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     const tests = testResultFor(done);
     const bot = model.bots[task.botId];
     const botName = bot?.name ?? "子 Bot";
-    const summary = `${botName} 完成了「${task.title}」，${tests.passed} 通过 · ${tests.failed} 失败`;
+    const summary = bot?.kind === "native" ? `${botName} 完成了「${task.title}」` : `${botName} 完成了「${task.title}」，${tests.passed} 通过 · ${tests.failed} 失败`;
     if (task.parentThreadId === MAIN_THREAD_ID) append(MAIN_THREAD_ID, { kind: "bot", botId: MAIN_BOT_ID, text: summary });
     else append(task.parentThreadId, { kind: "system", text: summary });
     logEvent({ source: "callback", title: `回调 · ${botName} 完成了 ${task.title}`, detail: "处理完成，状态已更新", botId: task.botId, taskId: task.id, status: "delivered" });
 
     const br = Object.values(model.branches).find((b) => b.taskId === task.id);
-    if (br) {
+    if (br && bot?.kind !== "native") {
       const diff = [...(model.entries[task.threadId] ?? [])].reverse().find((e) => e.kind === "diff");
       commit({
         kind: "branch.updated",
@@ -292,14 +298,13 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     }
   };
 
-  const bump = (taskId: TaskId, progress?: number) => {
+  /** 记一笔用量：任务的 token / 花费增加，成员的周花费同步增加，保证成本始终等于名下任务之和。 */
+  const bump = (taskId: TaskId) => {
     const t = model.tasks[taskId];
     if (!t) return;
-    patchTask(taskId, {
-      ...(progress !== undefined ? { progress: Math.max(t.progress ?? 0, progress) } : {}),
-      tokens: (t.tokens ?? 0) + 6_000,
-      costUsd: Math.round(((t.costUsd ?? 0) + 0.03) * 100) / 100,
-    });
+    patchTask(taskId, { tokens: (t.tokens ?? 0) + 6_000, costUsd: Math.round(((t.costUsd ?? 0) + 0.03) * 100) / 100 });
+    const b = model.bots[t.botId];
+    if (b) patchBot(b.id, { costWeekUsd: Math.round((b.costWeekUsd + 0.03) * 100) / 100 });
   };
 
   const toolSummary = (task: Task, reads: number, commands: number, edits: number): NewEntry => ({
@@ -339,46 +344,65 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     if (r.unattended && r.autoDeny) resolveApproval(ap.id, "deny", true);
   };
 
-  /** 主回合：按进度挑出尚未执行的步骤。 */
-  const mainSteps = (task: Task, withApproval: boolean): Step[] => {
-    const defs: Array<[number, Step]> = [
-      [15, (r, next) => {
-        bump(task.id, 15);
-        streamBot(task.threadId, task.botId, `我来处理「${task.title}」，先梳理一下相关代码结构…`, () => !r.dead, next);
-      }],
-      [35, (_r, next) => {
-        bump(task.id, 35);
-        append(task.threadId, toolSummary(task, 6, 2, 0));
-        next();
-      }],
-      ...(withApproval ? ([[50, approvalStep]] as Array<[number, Step]>) : []),
-      [70, (r, next) => {
-        bump(task.id, 70);
-        append(task.threadId, toolSummary(task, 4, 1, 2));
-        streamBot(task.threadId, task.botId, "定位到原因了，开始修改并补充测试。", () => !r.dead, next);
-      }],
-      [85, (_r, next) => {
-        bump(task.id, 85);
-        append(task.threadId, {
-          kind: "diff",
-          botId: task.botId,
-          files: [
-            { path: "src/payment/callback.ts", additions: 4, deletions: 1, patch: SAMPLE_PATCH },
-            { path: "tests/callback.test.ts", additions: 18, deletions: 0, patch: "@@ -1,3 +1,21 @@\n+import { isLegacySignature } from '../src/payment/signature'\n" },
-          ],
-        });
-        next();
-      }],
-      [95, (r, next) => {
-        bump(task.id, 95);
-        const tests = testResultFor(task);
-        append(task.threadId, { kind: "test_result", botId: task.botId, ...tests });
-        streamBot(task.threadId, task.botId, `「${task.title}」已完成，改动已写入工作区（${tests.passed} 通过 · ${tests.failed} 失败）。`, () => !r.dead, next);
-      }],
-    ];
-    const from = task.progress ?? 0;
-    return defs.filter(([p]) => p > from).map(([, s]) => s);
-  };
+  /** 编程类成员（Codex / Claude / ACP）的主回合：读代码 -> 审批 -> 改动 -> diff -> 测试 -> 收尾。 */
+  const codeSteps = (task: Task, withApproval: boolean): Step[] => [
+    (r, next) => {
+      bump(task.id);
+      const alive = () => !r.dead;
+      streamThinking(task.threadId, task.botId, `要做的是「${task.title}」。先读相关模块和已有测试，弄清现状再改，改完跑一遍测试确认。`, alive, () =>
+        streamBot(task.threadId, task.botId, `我来处理「${task.title}」，先梳理一下相关代码结构…`, alive, next),
+      );
+    },
+    (_r, next) => {
+      bump(task.id);
+      append(task.threadId, toolSummary(task, 6, 2, 0));
+      next();
+    },
+    ...(withApproval ? [approvalStep] : []),
+    (r, next) => {
+      bump(task.id);
+      append(task.threadId, toolSummary(task, 4, 1, 2));
+      streamBot(task.threadId, task.botId, "定位到原因了，开始修改并补充测试。", () => !r.dead, next);
+    },
+    (_r, next) => {
+      bump(task.id);
+      append(task.threadId, { kind: "diff", botId: task.botId, files: diffFor(task.title) });
+      next();
+    },
+    (r, next) => {
+      bump(task.id);
+      const tests = testResultFor(task);
+      append(task.threadId, { kind: "test_result", botId: task.botId, ...tests });
+      streamBot(task.threadId, task.botId, `「${task.title}」已完成，改动已写入工作区（${tests.passed} 通过 · ${tests.failed} 失败）。`, () => !r.dead, next);
+    },
+  ];
+
+  /** 原生成员（只读文件 / 网页）的主回合：检索 -> 整理 -> 结论，不改代码、不跑测试。 */
+  const researchSteps = (task: Task): Step[] => [
+    (r, next) => {
+      bump(task.id);
+      const alive = () => !r.dead;
+      streamThinking(task.threadId, task.botId, `「${task.title}」需要可靠的公开资料。先列出关键词，再挑几个权威来源交叉核对。`, alive, () =>
+        streamBot(task.threadId, task.botId, `我来处理「${task.title}」，先检索相关资料。`, alive, next),
+      );
+    },
+    (_r, next) => {
+      bump(task.id);
+      append(task.threadId, { kind: "tool_summary", botId: task.botId, reads: 8, commands: 0, edits: 0, items: [{ tool: "web", label: "公开资料与网页", ok: true }] });
+      next();
+    },
+    (r, next) => {
+      bump(task.id);
+      streamBot(task.threadId, task.botId, "资料已读完，正在整理要点与出处。", () => !r.dead, next);
+    },
+    (r, next) => {
+      bump(task.id);
+      streamBot(task.threadId, task.botId, `「${task.title}」已整理完成，要点和出处都写在上面了。`, () => !r.dead, next);
+    },
+  ];
+
+  const mainSteps = (task: Task, withApproval: boolean): Step[] =>
+    model.bots[task.botId]?.kind === "native" ? researchSteps(task) : codeSteps(task, withApproval);
 
   /** 插话 / 排队 / 打断之后的小回合。 */
   const followUpSteps = (text: string): Step[] => {
@@ -433,7 +457,6 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     bot: Bot;
     title: string;
     parentThreadId: ThreadId;
-    progress?: number;
     forkedFrom?: Task["forkedFrom"];
     approval: boolean;
     unattended?: boolean;
@@ -452,9 +475,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
       threadId: thread.id,
       parentThreadId: o.parentThreadId,
       status: "running",
-      progress: o.progress ?? 0,
-      cwd: DEFAULT_CWD,
-      branch: `muster/${slug || suffix}`,
+      ...(o.bot.kind === "native" ? {} : { cwd: DEFAULT_CWD, branch: `muster/${slug || suffix}` }),
       ...(o.forkedFrom ? { forkedFrom: o.forkedFrom } : {}),
       startedAt,
       tokens: 0,
@@ -464,7 +485,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     commit({ kind: "task.updated", task });
     append(thread.id, { kind: "system", text: o.intro });
     recomputeBot(o.bot.id);
-    const run = startRun(taskId, mainSteps(task, o.approval), { queue: [], steers: [] }, { unattended: !!o.unattended, autoDeny: !!o.autoDeny });
+    const run = startRun(taskId, mainSteps(task, o.approval && o.bot.kind !== "native"), { queue: [], steers: [] }, { unattended: !!o.unattended, autoDeny: !!o.autoDeny });
     schedule(run);
     return task;
   };
@@ -585,12 +606,17 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
 
   // ───────────────────────── 主线：Pip ─────────────────────────
 
-  const pipSay = (text: string, then?: () => void) => {
+  /** Pip 回复；给了 thought 时先流式输出一段思考。 */
+  const pipSay = (text: string, then?: () => void, thought?: string) => {
     patchBot(MAIN_BOT_ID, { status: "thinking" });
-    streamBot(MAIN_THREAD_ID, MAIN_BOT_ID, text, () => !disposed, () => {
-      patchBot(MAIN_BOT_ID, { status: "idle" });
-      then?.();
-    });
+    const alive = () => !disposed;
+    const say = () =>
+      streamBot(MAIN_THREAD_ID, MAIN_BOT_ID, text, alive, () => {
+        patchBot(MAIN_BOT_ID, { status: "idle" });
+        then?.();
+      });
+    if (thought) streamThinking(MAIN_THREAD_ID, MAIN_BOT_ID, thought, alive, say);
+    else say();
   };
 
   const handleMain = (text: string): Entry => {
@@ -612,6 +638,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
       return entry;
     }
 
+    const plan = intents.map((it) => `「${it.title}」交给${it.bot.name}`).join("，");
     later(typeMs * 4, () =>
       pipSay("好的，我来安排一下：", () => {
         intents.forEach((it, i) =>
@@ -622,7 +649,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
           }),
         );
         later(intents.length * 350, () => append(MAIN_THREAD_ID, { kind: "choices", options: ["顺便跑测试", "完成后通知我"], multi: true }));
-      }),
+      }, `用户点名了要做的事：${plan}。各自独立，可以并行派发。`),
     );
     return entry;
   };
@@ -642,7 +669,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     const busy = task.status === "running" || task.status === "waiting_approval";
     if (!busy) {
       const entry = append(thread.id, { kind: "user", text });
-      patchTask(task.id, { status: "running", finishedAt: undefined });
+      patchTask(task.id, { status: "running", progress: undefined, finishedAt: undefined });
       recomputeBot(task.botId);
       schedule(startRun(task.id, followUpSteps(text), { queue: [], steers: [] }));
       return entry;
@@ -714,12 +741,10 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     }
     const letter = String.fromCharCode(65 + familyBranches(src.id).length);
     const label = p.label?.trim() || "新方案";
-    const progress = Math.min(90, Math.round(((src.progress ?? 0) * (at + 1)) / Math.max(1, list.length)));
     const task = createTask({
       bot,
       title: `${src.title}（${label}）`,
       parentThreadId: src.threadId,
-      progress,
       forkedFrom: { taskId: src.id, entryId: p.entryId },
       approval: false,
       intro: `已从「${src.title}」的第 ${at + 1} 步分支出来：${label}`,
@@ -730,32 +755,15 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     return { task: model.tasks[task.id] ?? task, branch };
   };
 
-  // ───────────────────────── 种子数据补全 ─────────────────────────
+  // ───────────────────────── 让初始世界里"进行中"的任务继续推进 ─────────────────────────
 
-  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-  const seed = (threadId: ThreadId, e: NewEntry, minAgo: number) => {
-    const entry = { ...e, id: uid("e"), threadId, ts: ago(minAgo) } as Entry;
-    commit({ kind: "entry.appended", entry });
-  };
+  /** 种子会话已经覆盖的阶段数：这些阶段不再重复。等你确认的任务先挂起，不自行推进。 */
+  const SEEDED_STAGES: Record<TaskId, number> = { "task-refund-api": 2, "task-hiring-research": 2 };
 
-  const initSeed = () => {
-    // 夹具里没有会话记录的任务线程补几条，保证工作台有内容可看
-    for (const task of Object.values(model.tasks)) {
-      if ((model.entries[task.threadId] ?? []).length > 0) continue;
-      if (task.forkedFrom) {
-        seed(task.threadId, { kind: "system", text: `已从「${model.tasks[task.forkedFrom.taskId]?.title ?? "原任务"}」分支出来` }, 8);
-        seed(task.threadId, { kind: "bot", botId: task.botId, text: "换一种思路：用幂等键去重，避免重复回调被重复处理。" }, 7);
-      } else {
-        seed(task.threadId, { kind: "bot", botId: task.botId, text: `我来处理「${task.title}」，先看一下现有的订单与支付模块…` }, 40);
-        seed(task.threadId, toolSummary(task, 5, 1, 0), 38);
-      }
-      const pending = Object.values(model.approvals).find((a) => a.taskId === task.id && a.status === "pending");
-      if (pending) seed(task.threadId, { kind: "approval", approvalId: pending.id }, 3);
-    }
-    // 让夹具里"进行中"的任务继续推进；等审批的任务先挂起
+  const initRuns = () => {
     for (const task of Object.values(model.tasks)) {
       if (task.status !== "running" && task.status !== "waiting_approval") continue;
-      const run = startRun(task.id, mainSteps(task, false), { queue: [], steers: [] });
+      const run = startRun(task.id, mainSteps(task, false).slice(SEEDED_STAGES[task.id] ?? 0), { queue: [], steers: [] });
       const pending = Object.values(model.approvals).find((a) => a.taskId === task.id && a.status === "pending");
       if (task.status === "waiting_approval" && pending) {
         run.blockedOn = pending.id;
@@ -823,53 +831,6 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
   const checkTools = (tools: unknown): NativeToolGroup[] => {
     if (!Array.isArray(tools) || tools.some((t) => !NATIVE_TOOLS.includes(t as NativeToolGroup))) fail("bad_request", "tools 只能包含 files / edit / shell / web");
     return [...new Set(tools as NativeToolGroup[])];
-  };
-
-  const seedModels = () => {
-    const ref: ModelRef = { provider: "deepseek", modelId: "deepseek-flash" };
-    providers.set("deepseek", { id: "deepseek", kind: "builtin", builtinId: "deepseek", name: "DeepSeek", hasApiKey: true, enabled: true, createdAt: ago(60 * 24 * 3) });
-    apiKeys.set("deepseek", "sk-demo-deepseek");
-    commit({ kind: "models.changed", settings: { router: ref, native: ref } });
-
-    const patchSeed = (id: BotId, patch: Partial<Bot>) => {
-      const b = model.bots[id];
-      if (b) commit({ kind: "bot.updated", bot: { ...b, ...patch } });
-    };
-    patchSeed(MAIN_BOT_ID, { builtin: true });
-    patchSeed("bot-xiaotan", {
-      builtin: true,
-      tagline: "查资料、做调研、整理信息",
-      persona: "你是小探，一个严谨的研究员。先把问题拆开，查证后再给结论；每个结论都标明来源，不确定的地方直说不确定。回答用中文，结构清晰。",
-      tools: ["files", "web"],
-    });
-    patchSeed("bot-xiaowen", {
-      builtin: true,
-      tagline: "文档、日程与办公小事",
-      persona: "你是小文，一个细心的办公助手。擅长整理文档、起草邮件、安排日程。先确认目标和格式，再动手；改动已有文件前先说明要改什么。",
-      tools: ["files", "edit"],
-      model: { provider: "deepseek", modelId: "deepseek-v4-pro" },
-    });
-    const id = "bot-xiaoyi";
-    commit({
-      kind: "bot.added",
-      bot: {
-        id,
-        name: "小译",
-        kind: "native",
-        engineLabel: "内置翻译写作",
-        tagline: "中英互译、润色与改写",
-        shape: "round",
-        color: "butter",
-        status: "idle",
-        skills: ["翻译润色", "写作改写"],
-        costWeekUsd: 0.31,
-        threadId: `thread-${id}`,
-        persona: "你是小译，一位中英双语的翻译与写作助手。翻译时忠实原意、符合目标语言的表达习惯；润色时保留作者的语气，只改需要改的地方，并简要说明改了什么。",
-        model: ref,
-        tools: ["files", "web"],
-        builtin: false,
-      },
-    });
   };
 
   // ───────────────────────── 方法表 ─────────────────────────
@@ -1186,22 +1147,7 @@ export function createMockClient(opts: MockClientOptions = {}): MockClient {
     }),
   };
 
-  initSeed();
-  seedModels();
-  silent = false;
-
-  // 运行中的任务进度平滑上涨（每 progressMs +3~8%），到 94% 为止；100% 只由回合结束时给出。
-  const tickProgress = () => {
-    for (const t of Object.values(model.tasks)) {
-      if (t.status !== "running") continue;
-      const r = runs.get(t.id);
-      const cur = t.progress ?? 0;
-      if (!r || r.dead || r.blockedOn || cur >= 94) continue;
-      patchTask(t.id, { progress: Math.min(94, cur + 3 + Math.floor(Math.random() * 6)) });
-    }
-    later(progressMs, tickProgress);
-  };
-  if (progressMs > 0) later(progressMs, tickProgress);
+  initRuns();
 
   const emitStatus = (s: "connecting" | "open" | "closed") => statusHandlers.forEach((h) => h(s));
 

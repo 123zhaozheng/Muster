@@ -112,41 +112,41 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl">
+    <div className="mx-auto w-full max-w-xl">
       <Heading title="接入你的模型" hint="选一个服务商，填上自己的 API Key。密钥只保存在本机 daemon，永远不会发给页面。" />
 
       {existing && !saved && (
-        <div className="muster-rise mb-4 flex items-center gap-2 rounded-2xl bg-mint-soft px-4 py-2.5 text-sm text-mint-deep">
+        <div className="mb-4 flex items-center gap-2 rounded-control bg-success-surface px-4 py-2.5 text-sm text-success">
           <CheckCircle2 className="size-4 shrink-0" />
           已配置默认模型：{refText(existing)}。你可以直接跳过，或在这里换一个。
         </div>
       )}
 
-      <Card frosted className="p-6">
+      <Card className="p-6">
         {catalog.phase === "loading" ? (
-          <p className="py-6 text-center text-sm text-ink-soft">正在读取服务商目录…</p>
+          <p className="py-6 text-center text-sm text-fg-2">正在读取服务商目录…</p>
         ) : providers.length === 0 ? (
           <div className="py-6 text-center">
-            <p className="text-sm text-ink-soft">暂时没有读取到服务商目录（可能还没连上 daemon）。</p>
-            <p className="mt-1 text-xs text-ink-faint">不影响使用，稍后可以在「设置 · 模型」里配置。</p>
-            <Button className="mt-3" size="sm" variant="outline" onClick={loadCatalog}>重新读取</Button>
+            <p className="text-sm text-fg-2">暂时没有读取到服务商目录（可能还没连上 daemon）。</p>
+            <p className="mt-1 text-xs text-fg-3">不影响使用，稍后可以在「设置 · 模型与连接」里配置。</p>
+            <Button className="mt-3" size="sm" variant="secondary" onClick={loadCatalog}>重新读取</Button>
           </div>
         ) : saved ? (
-          <div className="muster-pop-in flex flex-col items-center gap-2 py-4 text-center" data-testid="model-saved">
-            <span className="grid size-14 place-items-center rounded-full bg-mint-soft text-mint-deep"><CheckCircle2 className="size-8" /></span>
-            <div className="text-[17px] font-semibold text-ink">模型已就绪</div>
-            <div className="font-mono text-sm text-ink-soft">{refText(saved.ref)}</div>
+          <div className="flex flex-col items-center gap-2 py-4 text-center" data-testid="model-saved">
+            <span className="grid size-10 place-items-center rounded-full bg-success-surface text-success"><CheckCircle2 className="size-6" /></span>
+            <div className="text-section font-semibold text-fg">模型已就绪</div>
+            <div className="font-mono text-sm text-fg-2">{refText(saved.ref)}</div>
             <div className="flex flex-wrap justify-center gap-2">
-              {saved.latencyMs !== undefined && <Badge tone="mint">{saved.latencyMs} ms</Badge>}
+              {saved.latencyMs !== undefined && <Badge tone="success">{saved.latencyMs} ms</Badge>}
               {saved.reply && <Badge tone="neutral">回复：{saved.reply.slice(0, 24)}</Badge>}
-              <Badge tone="lavender">已设为 Pip 与原生成员的默认模型</Badge>
+              <Badge tone="neutral">已设为 Pip 与原生成员的默认模型</Badge>
             </div>
             <Button size="sm" variant="ghost" onClick={reset}>换一个</Button>
           </div>
         ) : (
           <div className="grid gap-5">
             <div>
-              <div className="mb-2 text-sm font-medium text-ink">服务商</div>
+              <div className="mb-2 text-sm font-medium text-fg">服务商</div>
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3" role="group" aria-label="快速选择服务商">
                 {quick.map((p) => (
                   <button
@@ -155,12 +155,12 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
                     aria-pressed={providerId === p.id}
                     onClick={() => pick(p.id)}
                     className={cn(
-                      "flex cursor-pointer flex-col items-start rounded-2xl border px-3.5 py-2.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 ease-muster hover:-translate-y-0.5 active:scale-[0.98]",
-                      providerId === p.id ? "border-coral bg-coral-soft shadow-glow-coral" : "border-line bg-surface hover:border-ink-faint/40 hover:shadow-soft",
+                      "flex cursor-pointer flex-col items-start rounded-card border px-3.5 py-2.5 text-left transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                      providerId === p.id ? "border-accent bg-accent-surface" : "border-border bg-surface hover:bg-surface-muted",
                     )}
                   >
-                    <span className="text-sm font-semibold text-ink">{p.name}</span>
-                    <span className="text-xs text-ink-faint">{p.group ?? "内置"} · {p.modelCount} 个模型</span>
+                    <span className="text-sm font-semibold text-fg">{p.name}</span>
+                    <span className="text-xs text-fg-3">{p.group ?? "内置"} · {p.modelCount} 个模型</span>
                   </button>
                 ))}
               </div>
@@ -178,7 +178,7 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
             </div>
 
             {entry && !link && (
-              <div className="muster-rise grid gap-4">
+              <div className="grid gap-4">
                 <Field
                   label="API Key"
                   htmlFor="ob-key"
@@ -187,7 +187,7 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
                   hint={entry.envConfigured ? `已在环境变量 ${entry.envVar ?? ""} 中检测到密钥，可以留空。` : entry.envVar ? `也可以提前设置环境变量 ${entry.envVar}。` : undefined}
                 >
                   <div className="relative">
-                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
                     <Input
                       id="ob-key"
                       type={showKey ? "text" : "password"}
@@ -203,7 +203,7 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
                       type="button"
                       aria-label={showKey ? "隐藏密钥" : "显示密钥"}
                       onClick={() => setShowKey((v) => !v)}
-                      className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-lg text-ink-faint transition-colors hover:bg-canvas-deep hover:text-ink"
+                      className="absolute right-2 top-1/2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-control text-fg-3 transition-colors hover:bg-surface-muted hover:text-fg"
                     >
                       {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
@@ -216,8 +216,8 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
             )}
 
             {entry && link && (
-              <div className="muster-rise grid gap-4">
-                <div className="flex items-center gap-2 text-sm text-mint-deep">
+              <div className="grid gap-4">
+                <div className="flex items-center gap-2 text-sm text-success">
                   <CheckCircle2 className="size-4" /> 已连接 {link.config.name}，找到 {link.models.length} 个模型
                 </div>
                 <Field label="模型" htmlFor="ob-model" hint={link.models.length === 0 ? "没有拿到模型列表，请手动输入模型 ID。" : "可以搜索，也能直接输入列表里没有的模型 ID。"}>
@@ -238,7 +238,7 @@ export function ModelStep({ onConfigured, onSkip }: { onConfigured?: (label: str
               </div>
             )}
 
-            {error && <p role="alert" className="muster-fade-in rounded-2xl bg-danger-soft px-4 py-2.5 text-sm text-danger-deep">{error}</p>}
+            {error && <p role="alert" className="muster-fade-in rounded-control bg-danger-surface px-4 py-2.5 text-sm text-danger">{error}</p>}
           </div>
         )}
       </Card>

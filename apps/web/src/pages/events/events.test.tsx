@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { events as fixtureEvents, triggers as fixtureTriggers } from "@muster/protocol/fixtures";
@@ -7,6 +7,9 @@ import { useHub } from "../../lib/hub";
 import { setupHub } from "../../components/events/testHarness";
 import EventsPage from "./index";
 
+beforeAll(() => {
+  Element.prototype.scrollIntoView ??= () => undefined;
+});
 afterEach(cleanup);
 
 const handlers = {
@@ -23,40 +26,68 @@ const renderPage = () =>
       <EventsPage />
     </MemoryRouter>,
   );
-const openRule = (label: string) => fireEvent.click(screen.getByRole("button", { name: `编辑规则 ${label}` }));
+const showSchedule = () => fireEvent.mouseDown(screen.getByRole("tab", { name: "日程" }), { button: 0 });
+const openRule = (label: string) => {
+  showSchedule();
+  fireEvent.click(screen.getByRole("button", { name: `编辑日程 ${label}` }));
+};
 
-describe("EventsPage", () => {
-  it("renders header, stats, grouped timeline, filters and rule cards", async () => {
+describe("EventsPage feed", () => {
+  it("shows the 动态 tab first with events grouped by day, source, member, status and links", async () => {
     setupHub(handlers);
     renderPage();
-    await act(async () => undefined); // let the initial event.list settle
+    await act(async () => undefined);
     expect(screen.getByRole("heading", { name: "事件" })).toBeTruthy();
-    expect(screen.getByText("一切皆为事件，Muster 与你同行")).toBeTruthy();
-    expect(screen.getByTestId("event-stats")).toBeTruthy();
-    expect(screen.getByTestId("source-mix")).toBeTruthy();
-    for (const name of ["全部", "用户", "定时", "GitHub", "回调", "设备"]) expect(screen.getByRole("button", { name })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "动态" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByTestId("event-day").length).toBeGreaterThan(0);
     expect(eventItems()).toHaveLength(fixtureEvents.length);
-    expect(screen.getByText("GitHub · PR #128 已打开 · shop-api")).toBeTruthy();
-    expect(screen.getByText("观察模式：已记录将会做什么")).toBeTruthy();
-    expect(screen.getAllByText("已送达")).toHaveLength(2);
-    // rule cards
-    expect(screen.getAllByTestId("trigger-card")).toHaveLength(fixtureTriggers.length);
-    for (const t of fixtureTriggers) expect(screen.getByRole("button", { name: `编辑规则 ${t.label}` })).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "启用 当 PR 打开时" }).getAttribute("aria-checked")).toBe("true");
-    // the editor is closed until asked for
-    expect(screen.queryByRole("dialog")).toBeNull();
+
+    const pr = eventItems().find((i) => i.textContent?.includes("PR #128"))!;
+    expect(within(pr).getByText("GitHub")).toBeTruthy();
+    expect(within(pr).getByText("阿克")).toBeTruthy();
+    expect(within(pr).getByText("已记录")).toBeTruthy();
+    expect(within(pr).getByText("观察模式：已记录将会做什么")).toBeTruthy();
+    expect(within(pr).getByRole("link", { name: "继续对话" }).getAttribute("href")).toBe("/task/task-refund-api");
+
+    const callback = eventItems().find((i) => i.textContent?.includes("完成了 修支付回调"))!;
+    expect(within(callback).getByRole("link", { name: "来源任务：修支付回调 bug" }).getAttribute("href")).toBe("/task/task-fix-callback");
+    expect(within(callback).getByRole("link", { name: "继续对话" }).getAttribute("href")).toBe("/task/task-fix-callback");
+
+    const device = eventItems().find((i) => i.textContent?.includes("书房台式机 上线"))!;
+    expect(within(device).queryByRole("link", { name: "继续对话" })).toBeNull();
   });
 
-  it("filters by source, merges live pushes and highlights the new ones", async () => {
+  it("folds a burst of look-alike events into one row that expands", async () => {
+    setupHub({ ...handlers, "event.list": () => ({ events: [] }) });
+    const burst: HubEvent[] = ["a", "b", "c", "d"].map((id, i) => ({
+      id: `burst-${id}`,
+      ts: new Date(Date.now() - i * 1000).toISOString(),
+      source: "cron",
+      title: "定时 · 巡检",
+      triggerId: "tr-brief",
+      status: i === 0 ? "failed" : "delivered",
+    }));
+    useHub.setState((s) => ({ model: { ...s.model, events: burst } }));
+    renderPage();
+    await act(async () => undefined);
+    const run = screen.getByTestId("event-run");
+    expect(within(run).getByText("共 4 次")).toBeTruthy();
+    expect(within(run).getByText("1 次失败")).toBeTruthy();
+    const before = eventItems().length;
+    fireEvent.click(within(run).getByRole("button", { name: "展开全部" }));
+    expect(eventItems().length).toBe(before + 4);
+  });
+
+  it("filters by source and merges live pushes", async () => {
     const request = setupHub(handlers);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "GitHub" }));
+    const trigger = screen.getByRole("combobox", { name: "按来源筛选" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(await screen.findByRole("option", { name: "GitHub" }), { key: "Enter" });
     await waitFor(() => expect(request).toHaveBeenCalledWith("event.list", { source: "github", limit: 100 }));
     await waitFor(() => expect(eventItems()).toHaveLength(1));
-    expect(within(eventItems()[0]!).getByText(/PR #128/)).toBeTruthy();
 
-    const ts = "2099-01-01T00:00:00.000Z"; // newer than any fixture
+    const ts = "2099-01-01T00:00:00.000Z";
     const live: HubEvent = { id: "ev-live", ts, source: "github", title: "GitHub · PR #129 已打开 · shop-api", status: "recorded" };
     const other: HubEvent = { id: "ev-live-2", ts, source: "cron", title: "定时 · 实时事件" };
     act(() => {
@@ -64,25 +95,54 @@ describe("EventsPage", () => {
     });
     expect(eventItems()).toHaveLength(2);
     expect(eventItems()[0]!.textContent).toContain("PR #129"); // newest first
-    expect(eventItems()[0]!.getAttribute("data-fresh")).toBe("true");
-    expect(eventItems()[1]!.getAttribute("data-fresh")).toBeNull();
     expect(screen.queryByText("定时 · 实时事件")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "全部" }));
-    await waitFor(() => expect(eventItems()).toHaveLength(fixtureEvents.length + 2));
   });
 
-  it("expands an event to show its details", async () => {
+  it("shows an empty state without events", async () => {
+    setupHub({ ...handlers, "event.list": () => ({ events: [] }) });
+    useHub.setState((s) => ({ model: { ...s.model, events: [] } }));
+    renderPage();
+    await act(async () => undefined);
+    expect(screen.getByText("还没有事件")).toBeTruthy();
+  });
+});
+
+describe("EventsPage schedule", () => {
+  it("lists rules with plain-language frequency, dated next run with time zone, and last result", async () => {
     setupHub(handlers);
     renderPage();
     await act(async () => undefined);
-    const item = eventItems().find((i) => i.textContent?.includes("PR #128"))!;
-    const toggle = within(item).getByRole("button", { expanded: false });
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(await within(item).findByText("事件 ID")).toBeTruthy();
-    expect(within(item).getByText("ev-1")).toBeTruthy();
-    expect(within(item).getByText("当 PR 打开时")).toBeTruthy();
+    showSchedule();
+    const rows = screen.getAllByTestId("schedule-row");
+    expect(rows).toHaveLength(fixtureTriggers.length);
+    const brief = rows.find((r) => r.textContent?.includes("每日 09:00 晨间简报"))!;
+    expect(within(brief).getByText(/定时 · 每天 09:00/)).toBeTruthy();
+    expect(within(brief).getByText(/^\d+月\d+日 周. 09:00$/)).toBeTruthy();
+    expect(within(brief).getByText("Asia/Shanghai")).toBeTruthy();
+    expect(within(brief).getByText(/已送达/)).toBeTruthy();
+    const pr = rows.find((r) => r.textContent?.includes("当 PR 打开时"))!;
+    expect(within(pr).getByText("有事件时触发")).toBeTruthy();
+    expect(within(pr).getByText(/shop-api · PR 打开/)).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "启用 当 PR 打开时" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows upcoming timed runs beside the tabs", async () => {
+    setupHub(handlers);
+    renderPage();
+    const items = screen.getAllByTestId("upcoming-item");
+    expect(items).toHaveLength(1); // only the enabled cron rule is timed
+    expect(items[0]!.textContent).toContain("每日 09:00 晨间简报");
+    expect(items[0]!.textContent).toContain("Asia/Shanghai");
+  });
+
+  it("toggles a rule without opening the editor", async () => {
+    const request = setupHub(handlers);
+    renderPage();
+    showSchedule();
+    fireEvent.click(screen.getByRole("switch", { name: "启用 每日 09:00 晨间简报" }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("trigger.upsert", { trigger: { ...fixtureTriggers[1], enabled: false } }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("edits a rule in the drawer and saves it through trigger.upsert", async () => {
@@ -103,15 +163,16 @@ describe("EventsPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("creates a new cron rule (preset + preview) without an id", async () => {
+  it("creates a new cron rule (preset + dated preview) without an id", async () => {
     const request = setupHub(handlers);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "新建规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建日程" }));
     fireEvent.change(await screen.findByLabelText(/^名称/), { target: { value: "每周一复盘" } });
-    fireEvent.click(screen.getByRole("radio", { name: "定时" }));
     fireEvent.click(screen.getByRole("button", { name: "每周一 10 点" }));
     expect((screen.getByLabelText(/^Cron 表达式/) as HTMLInputElement).value).toBe("0 10 * * 1");
-    expect(within(screen.getByTestId("cron-preview")).getAllByRole("listitem")).toHaveLength(3);
+    const preview = within(screen.getByTestId("cron-preview")).getAllByRole("listitem");
+    expect(preview).toHaveLength(3);
+    expect(preview[0]!.textContent).toMatch(/^\d+月\d+日 周一 10:00$/);
     fireEvent.click(screen.getByRole("radio", { name: "询问" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(request).toHaveBeenCalledWith("trigger.upsert", expect.anything()));
@@ -132,10 +193,13 @@ describe("EventsPage", () => {
   it("validates before saving and flags a bad cron expression", async () => {
     const request = setupHub(handlers);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "新建规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建日程" }));
     await screen.findByLabelText(/^名称/);
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    expect(await screen.findByText("给规则起个名字吧")).toBeTruthy();
+    expect(await screen.findByText("给日程起个名字吧")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("radio", { name: "GitHub" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
     expect(screen.getByText("请填写要监听的仓库")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText(/^名称/), { target: { value: "坏规则" } });
@@ -147,12 +211,9 @@ describe("EventsPage", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
-  it("dry-runs from a card and from the drawer; deleting asks for confirmation", async () => {
+  it("dry-runs from the drawer; deleting asks for confirmation", async () => {
     const request = setupHub(handlers);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "试跑 每日 09:00 晨间简报" }));
-    await waitFor(() => expect(request).toHaveBeenCalledWith("trigger.fire", { triggerId: "tr-brief" }));
-
     openRule("当 PR 打开时");
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: "试跑" }));
@@ -167,26 +228,20 @@ describe("EventsPage", () => {
   it("new rules have no dry-run or delete", async () => {
     setupHub(handlers);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "新建规则" }));
+    fireEvent.click(screen.getByRole("button", { name: "新建日程" }));
     await screen.findByRole("dialog");
     expect(screen.queryByRole("button", { name: "试跑" })).toBeNull();
     expect(screen.queryByRole("button", { name: "删除" })).toBeNull();
   });
 
-  it("toggles a rule from its card", async () => {
-    const request = setupHub(handlers);
-    renderPage();
-    fireEvent.click(screen.getByRole("switch", { name: "启用 每日 09:00 晨间简报" }));
-    await waitFor(() => expect(request).toHaveBeenCalledWith("trigger.upsert", { trigger: { ...fixtureTriggers[1], enabled: false } }));
-    expect(screen.queryByRole("dialog")).toBeNull(); // the switch must not open the editor
-  });
-
-  it("shows an illustrated empty state when there are no rules", async () => {
+  it("shows an empty state when there are no rules", async () => {
     setupHub(handlers);
     useHub.setState((s) => ({ model: { ...s.model, triggers: {} } }));
     renderPage();
-    expect(screen.getByText("还没有触发规则")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "创建第一条规则" }));
+    showSchedule();
+    expect(screen.getByText("还没有日程")).toBeTruthy();
+    expect(screen.getByText("没有已启用的定时日程。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "创建第一条日程" }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });

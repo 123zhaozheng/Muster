@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
-import { Sparkles, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 import type { ModelInfo, ModelProviderConfig, ModelRef, ModelSettings } from "@muster/protocol";
-import { Button, Card, Field, Pebble, Select, toast, type SelectOption } from "@muster/ui";
+import { Button, Section, SettingsRow, Select, cn, type SelectOption } from "@muster/ui";
 import { hubRequest } from "../../lib/hub";
 import { friendlyTestError, modelDetail, NONE_VALUE, refToValue, valueToRef, withSetting } from "./modelMeta";
 
 type TestState = { phase: "idle" } | { phase: "running" } | { phase: "done"; ok: boolean; latencyMs?: number; reply?: string; error?: string };
+type SaveState = "idle" | "saving" | "saved" | "failed";
+
+const SAVE_TEXT: Record<Exclude<SaveState, "idle">, string> = { saving: "保存中…", saved: "已保存", failed: "保存失败，已恢复" };
 
 /** 按 provider 分组的模型选项；当前选中但已不在列表里的模型也保留一项，避免显示空白。 */
 function buildOptions(models: ModelInfo[], providers: ModelProviderConfig[], current: ModelRef | undefined, noneLabel: string): SelectOption[] {
@@ -29,20 +32,17 @@ function ModelRow({ id, label, hint, unsetHint, noneLabel, value, models, provid
   value?: ModelRef;
   models: ModelInfo[];
   providers: ModelProviderConfig[];
-  onPick: (ref: ModelRef | undefined) => Promise<void>;
+  /** 保存成功返回 true；失败返回 false（界面保持原值）。 */
+  onPick: (ref: ModelRef | undefined) => Promise<boolean>;
 }) {
   const [test, setTest] = useState<TestState>({ phase: "idle" });
-  const [saving, setSaving] = useState(false);
+  const [save, setSave] = useState<SaveState>("idle");
   const options = useMemo(() => buildOptions(models, providers, value, noneLabel), [models, providers, value, noneLabel]);
 
   const pick = async (v: string) => {
     setTest({ phase: "idle" });
-    setSaving(true);
-    try {
-      await onPick(valueToRef(v));
-    } finally {
-      setSaving(false);
-    }
+    setSave("saving");
+    setSave((await onPick(valueToRef(v))) ? "saved" : "failed");
   };
 
   const runTest = async () => {
@@ -57,25 +57,27 @@ function ModelRow({ id, label, hint, unsetHint, noneLabel, value, models, provid
   };
 
   return (
-    <div className="grid gap-2">
-      <Field label={label} htmlFor={id} hint={value ? hint : undefined}>
+    <div className="border-b border-border py-3.5 first:pt-0 last:border-b-0 last:pb-0">
+      <SettingsRow label={label} description={value ? hint : unsetHint} className="!border-0 !p-0">
         <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <Select id={id} aria-label={label} value={refToValue(value)} onValueChange={pick} options={options} disabled={saving || models.length === 0} placeholder="选择模型" />
+          {save !== "idle" && (
+            <span role="status" className={cn("text-xs", save === "failed" ? "text-danger" : "text-fg-3")}>{SAVE_TEXT[save]}</span>
+          )}
+          <div className="w-64">
+            <Select id={id} aria-label={label} value={refToValue(value)} onValueChange={pick} options={options} disabled={save === "saving" || models.length === 0} placeholder="选择模型" />
           </div>
-          <Button variant="outline" icon={<Zap className="size-4" />} loading={test.phase === "running"} disabled={!value} onClick={runTest} aria-label={`测试${label}`}>
+          <Button variant="secondary" icon={<Zap className="size-4" />} loading={test.phase === "running"} disabled={!value} onClick={runTest} aria-label={`测试${label}`}>
             测试
           </Button>
         </div>
-      </Field>
-      {!value && <p className="text-xs text-amber-deep">{unsetHint}</p>}
+      </SettingsRow>
       {test.phase === "done" && (
-        <div role="status" className={`muster-fade-in rounded-2xl px-3.5 py-2 text-xs ${test.ok ? "bg-mint-soft/70 text-mint-deep" : "bg-danger/10 text-danger-deep"}`}>
+        <div role="status" className={cn("muster-fade-in mt-3 rounded-control px-3 py-2 text-xs", test.ok ? "bg-success-surface text-success" : "bg-danger-surface text-danger")}>
           {test.ok ? (
             <>
               <span className="font-medium">可用</span>
               {test.latencyMs != null && <span> · 延迟 {test.latencyMs} ms</span>}
-              {test.reply && <span className="block truncate opacity-80">回复：{test.reply}</span>}
+              {test.reply && <span className="block truncate">回复：{test.reply}</span>}
             </>
           ) : (
             <>
@@ -89,61 +91,48 @@ function ModelRow({ id, label, hint, unsetHint, noneLabel, value, models, provid
   );
 }
 
-/** 顶部“默认模型”卡：Pip 路由模型 + 原生成员默认模型。选择即保存（model.settingsSet）。 */
+/** “默认模型”：Pip 路由模型 + 原生成员默认模型。选择即保存（model.settingsSet）。 */
 export function DefaultModelCard({ models, providers, settings, onSettings }: {
   models: ModelInfo[];
   providers: ModelProviderConfig[];
   settings: ModelSettings;
   onSettings: (s: ModelSettings) => void;
 }) {
-  const save = (key: keyof ModelSettings, name: string) => async (ref: ModelRef | undefined) => {
+  const save = (key: keyof ModelSettings) => async (ref: ModelRef | undefined): Promise<boolean> => {
     try {
       const r = await hubRequest("model.settingsSet", { settings: withSetting(settings, key, ref) });
       onSettings(r.settings);
-      toast.success(ref ? `${name}已设为 ${ref.modelId}` : `已清除${name}`);
-    } catch (e) {
-      toast.error({ title: "保存失败", description: e instanceof Error ? e.message : String(e) });
+      return true;
+    } catch {
+      return false;
     }
   };
 
   return (
-    <Card frosted className="relative overflow-hidden p-6">
-      <div aria-hidden className="muster-halo pointer-events-none absolute -right-10 -top-10 size-56 rounded-full" style={{ ["--halo" as string]: "#8b7cf6" }} />
-      <div className="relative flex items-start gap-4">
-        <Pebble shape="egg" color="lilac" status={settings.router || settings.native ? "idle" : "thinking"} size={64} halo />
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 text-[17px] font-semibold text-ink">
-            <Sparkles className="size-4 text-lavender-deep" />
-            默认模型
-          </h2>
-          <p className="mt-0.5 text-sm text-ink-soft">选好后立即生效。每个成员也可以在「团队」里单独指定模型。</p>
-        </div>
-      </div>
-      <div className="relative mt-5 grid gap-5 lg:grid-cols-2">
-        <ModelRow
-          id="model-router"
-          label="Pip 路由模型"
-          hint="Pip 用它理解你的话、分派任务和闲聊。"
-          unsetHint="未设置时 Pip 只能按规则路由（点名成员才会分派），不会闲聊。"
-          noneLabel="未设置（仅规则路由）"
-          value={settings.router}
-          models={models}
-          providers={providers}
-          onPick={save("router", "Pip 路由模型")}
-        />
-        <ModelRow
-          id="model-native"
-          label="原生成员默认模型"
-          hint="没有单独指定模型的原生成员都用它。"
-          unsetHint="未设置时原生成员无法工作，会提示先去配置模型。"
-          noneLabel="未设置"
-          value={settings.native}
-          models={models}
-          providers={providers}
-          onPick={save("native", "原生成员默认模型")}
-        />
-      </div>
-      {models.length === 0 && <p className="relative mt-4 rounded-2xl bg-canvas-deep px-4 py-3 text-sm text-ink-soft">还没有可选的模型。先在下方添加一个模型服务，再回来选择。</p>}
-    </Card>
+    <Section title="默认模型" description="选好后立即生效。每个成员也可以在「团队」里单独指定模型。" card>
+      <ModelRow
+        id="model-router"
+        label="Pip 路由模型"
+        hint="Pip 用它理解你的话、分派任务和闲聊。"
+        unsetHint="未设置时 Pip 只能按规则路由（点名成员才会分派），不会闲聊。"
+        noneLabel="未设置（仅规则路由）"
+        value={settings.router}
+        models={models}
+        providers={providers}
+        onPick={save("router")}
+      />
+      <ModelRow
+        id="model-native"
+        label="原生成员默认模型"
+        hint="没有单独指定模型的原生成员都用它。"
+        unsetHint="未设置时原生成员无法工作，会提示先去配置模型。"
+        noneLabel="未设置"
+        value={settings.native}
+        models={models}
+        providers={providers}
+        onPick={save("native")}
+      />
+      {models.length === 0 && <p className="mt-4 rounded-control bg-surface-muted px-4 py-3 text-sm text-fg-2">还没有可选的模型。先在下方添加一个模型服务，再回来选择。</p>}
+    </Section>
   );
 }

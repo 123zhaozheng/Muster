@@ -1,42 +1,69 @@
-// 工作台输入框：忙碌时 插话 / 排队 / 打断 三态分段 + 快捷键；任务结束后变为“继续对话”。
-//   忙碌：Enter=按所选模式发送（默认插话） Alt+Enter=排队  Ctrl/Cmd+Enter=打断并发送  Shift+Enter 换行
-//   空闲：Enter 发送（继续对话）
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Clock,MessageSquareReply, Pause, Send, Sparkles, Zap } from "lucide-react";
-import { Button, Kbd, cn } from "@muster/ui";
+// 任务输入框：任务进行中是“补充要求”，插话 / 排队 / 打断三选一；任务结束后变为“继续对话”。
+// 发送方式随“设置 · 通用 · 发送方式”：
+//   Enter 发送      进行中：Enter=按所选方式发送（默认插话）  Alt/⌥+Enter=排队  Ctrl/⌘+Enter=打断并发送；已结束：Enter 发送
+//   Ctrl+Enter 发送 进行中：Ctrl/⌘+Enter=按所选方式发送  Alt/⌥+Enter=排队；已结束：Ctrl/⌘+Enter 发送；Enter 换行
+//   Shift+Enter 始终换行，输入法组字中不发送
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useParams } from "react-router";
+import { ArrowUp } from "lucide-react";
+import { Button, Kbd, Segmented } from "@muster/ui";
+import { ApprovalDock } from "../approvals/ApprovalDock";
+import { useSendKey, type SendKey } from "../../lib/preferences";
+import { isMac, modLabel } from "../../shell/keys";
 import { resolveSendMode, type SendMode } from "./logic";
-import "./workbench.css";
 
-export interface ComposerProps {
+type KeyLike = Parameters<typeof resolveSendMode>[0];
+
+const MIN_HEIGHT = 48;
+const MAX_HEIGHT = 240;
+
+/** 在发送方式偏好下解析按键；"steer" 表示“按当前选中的方式发”。 */
+function resolveKey(e: KeyLike, busy: boolean, sendKey: SendKey): SendMode | null {
+  const resolved = resolveSendMode(e, busy);
+  if (!resolved || sendKey === "enter") return resolved;
+  if (e.ctrlKey || e.metaKey) return busy ? "steer" : "normal";
+  if (busy && e.altKey) return "queue";
+  return null; // 纯 Enter 换行
+}
+
+interface ComposerProps {
   botName: string;
   busy: boolean;
+  /** 非进行中时的提示；默认是“任务已结束…”。 */
+  idleHint?: string;
+  /** 这条对话所属的工单：它的待确认请求停靠在输入框上方。默认取路由参数 :taskId。 */
+  taskId?: string;
   /** 发送；成功 resolve 后输入框清空，reject 则保留文本。 */
   onSend: (text: string, mode: SendMode) => Promise<void>;
 }
 
 type BusyMode = "steer" | "queue" | "interrupt";
-const MODES: { value: BusyMode; label: string; hint: string; keys: string; icon: typeof Send; active: string }[] = [
-  { value: "steer", label: "插话", hint: "下一步生效，不中断", keys: "Enter", icon: MessageSquareReply, active: "bg-lavender-soft text-lavender-deep ring-lavender/40" },
-  { value: "queue", label: "排队", hint: "等这一轮做完再处理", keys: "Alt+Enter", icon: Clock, active: "bg-sky-soft text-sky-deep ring-sky/40" },
-  { value: "interrupt", label: "打断", hint: "立即停下并改做这件事", keys: "Ctrl+Enter", icon: Pause, active: "bg-danger-soft text-danger-deep ring-danger/40" },
+const MODES: { value: BusyMode; label: string; hint: string }[] = [
+  { value: "steer", label: "插话", hint: "下一步生效，不中断" },
+  { value: "queue", label: "排队", hint: "等这一轮做完再处理" },
+  { value: "interrupt", label: "打断", hint: "立即停下并改做这件事" },
 ];
 
-export function Composer({ botName, busy, onSend }: ComposerProps) {
+export function Composer({ botName, busy, idleHint, taskId: taskIdProp, onSend }: ComposerProps) {
+  const params = useParams();
+  const taskId = taskIdProp ?? params.taskId;
   const [text, setText] = useState("");
   const [mode, setMode] = useState<BusyMode>("steer");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const sendKey = useSendKey();
   const empty = text.trim() === "";
 
-  // 输入框随内容长高（最多 160px）。
-  useEffect(() => {
+  // 输入框随内容长高，到上限后框内滚动。
+  useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, MIN_HEIGHT), MAX_HEIGHT)}px`;
+    el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? "auto" : "hidden";
   }, [text]);
-  // 任务结束后回到默认模式。
+  // 任务结束后回到默认方式。
   useEffect(() => {
     if (!busy) setMode("steer");
   }, [busy]);
@@ -58,77 +85,65 @@ export function Composer({ botName, busy, onSend }: ComposerProps) {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    const resolved = resolveSendMode({ key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing }, busy);
+    const resolved = resolveKey({ key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode }, busy, sendKey);
     if (!resolved) return;
     e.preventDefault();
-    void send(resolved === "steer" ? mode : resolved); // 纯 Enter 按当前选中的模式发
+    void send(resolved === "steer" ? mode : resolved); // 纯 Enter 按当前选中的方式发
   };
 
   const current = MODES.find((m) => m.value === mode)!;
   const sendMode: SendMode = busy ? mode : "normal";
+  const mod = modLabel();
+  const alt = isMac() ? "⌥" : "Alt";
+
+  const hints = sendKey === "ctrl-enter" ? (
+    <>
+      <span className="inline-flex items-center gap-1"><Kbd>{mod}</Kbd>+<Kbd>Enter</Kbd>{busy ? current.label : "发送"}</span>
+      {busy && <span className="inline-flex items-center gap-1"><Kbd>{alt}</Kbd>+<Kbd>Enter</Kbd>排队</span>}
+      <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd>换行</span>
+    </>
+  ) : (
+    <>
+      {busy ? (
+        <>
+          <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd>{current.label}</span>
+          <span className="inline-flex items-center gap-1"><Kbd>{alt}</Kbd>+<Kbd>Enter</Kbd>排队</span>
+          <span className="inline-flex items-center gap-1"><Kbd>{mod}</Kbd>+<Kbd>Enter</Kbd>打断并发送</span>
+        </>
+      ) : (
+        <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd>发送</span>
+      )}
+      <span className="inline-flex items-center gap-1"><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd>换行</span>
+    </>
+  );
 
   return (
-    <div className="border-t border-line/70 bg-gradient-to-b from-transparent to-canvas-deep/40 px-4 pb-3 pt-3">
-      {busy ? (
-        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <div role="radiogroup" aria-label="发送方式" className="inline-flex gap-1 rounded-pill bg-canvas-deep p-1 shadow-[inset_0_1px_2px_rgb(60_40_20/0.06)]">
-            {MODES.map((m) => {
-              const on = m.value === mode;
-              const Icon = m.icon;
-              return (
-                <button
-                  key={m.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  aria-label={m.label}
-                  title={`${m.label}：${m.hint}（${m.keys}）`}
-                  onClick={() => setMode(m.value)}
-                  className={cn(
-                    "inline-flex cursor-pointer items-center gap-1.5 rounded-pill px-3 py-1 text-[13px] font-medium ring-1 ring-transparent transition-[background-color,color,box-shadow] duration-200 ease-muster",
-                    on ? cn(m.active, "shadow-soft") : "text-ink-soft hover:text-ink",
-                  )}
-                >
-                  <Icon size={13} aria-hidden />
-                  <span aria-hidden>{m.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <span className="text-xs text-ink-soft">{current.hint}</span>
-        </div>
-      ) : (
-        <div className="mb-2 flex items-center gap-1.5 text-xs text-ink-soft">
-          <Sparkles size={13} className="text-coral" aria-hidden />
-          任务已结束，继续对话会让 {botName} 接着上下文往下做
-        </div>
-      )}
-      <div className={cn("flex items-end gap-2 rounded-3xl border bg-surface px-4 py-2 shadow-card transition-[border-color,box-shadow] duration-200 ease-muster focus-within:border-coral/50 focus-within:shadow-[0_0_0_4px_rgb(255_107_74/0.12),var(--shadow-card)]", error ? "border-danger/50" : "border-line")}>
-        <span className={cn("mb-2 shrink-0", busy ? "text-lavender" : "text-coral")} aria-hidden>{busy ? <Zap size={18} /> : <Sparkles size={18} />}</span>
+    <div className="flex flex-col gap-2">
+      {taskId && <ApprovalDock taskId={taskId} />}
+      <div className="rounded-composer border border-border bg-surface px-3 pb-2 pt-3 transition-colors focus-within:border-accent">
         <textarea
           ref={ref}
-          rows={1}
+          rows={2}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={busy ? `给${botName}插话…` : `继续和${botName}对话…`}
-          aria-label={busy ? "插话内容" : "继续对话内容"}
-          className="wb-scroll max-h-40 min-h-6 flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 outline-none placeholder:text-ink-faint"
+          aria-label={busy ? "补充要求" : "继续对话内容"}
+          className="block min-h-[48px] max-h-[240px] w-full resize-none bg-transparent px-1 text-body text-fg outline-none placeholder:text-fg-3"
         />
-        <Button variant="primary" aria-label="发送" className="mb-0.5 size-10 shrink-0 !px-0" disabled={empty} loading={sending} icon={<Send size={17} />} onClick={() => void send(sendMode)} />
+        <div className="mt-1 flex items-center gap-2">
+          {busy && <Segmented value={mode} onChange={setMode} options={MODES.map(({ value, label }) => ({ value, label }))} />}
+          <div className="flex-1" />
+          <Button variant="primary" aria-label="发送" className="size-8 shrink-0 rounded-full !px-0" disabled={empty} loading={sending} icon={<ArrowUp className="size-4" />} onClick={() => void send(sendMode)} />
+        </div>
       </div>
-      {error && <div role="status" className="mt-1.5 px-2 text-xs text-danger">发送失败：{error}</div>}
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-[11px] text-ink-faint">
-        {busy ? (
-          <>
-            <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd>{current.label}</span>
-            <span className="inline-flex items-center gap-1"><Kbd>Alt</Kbd>+<Kbd>Enter</Kbd>排队</span>
-            <span className="inline-flex items-center gap-1"><Kbd>Ctrl/⌘</Kbd>+<Kbd>Enter</Kbd>打断并发送</span>
-          </>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 text-xs text-fg-3">
+        {error ? (
+          <span role="status" className="min-w-0 flex-1 text-danger">发送失败：{error}</span>
         ) : (
-          <span className="inline-flex items-center gap-1"><Kbd>Enter</Kbd>发送</span>
+          <span className="min-w-0 flex-1 truncate">{busy ? current.hint : (idleHint ?? `任务已结束，继续对话会让${botName}接着上下文往下做`)}</span>
         )}
-        <span className="inline-flex items-center gap-1"><Kbd>Shift</Kbd>+<Kbd>Enter</Kbd>换行</span>
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">{hints}</span>
       </div>
     </div>
   );

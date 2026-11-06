@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { polyfillDom, setupModelHub, type FakeDaemon } from "../../components/settings/modelTestSetup";
+import { useHub } from "../../lib/hub";
 import Settings from "./index";
 
 function renderAt(entry: string) {
@@ -14,30 +15,84 @@ function renderAt(entry: string) {
 
 const upsertCalls = (d: FakeDaemon) => d.request.mock.calls.filter((c) => c[0] === "model.providerUpsert");
 
-describe("设置 · 分区", () => {
-  let d: FakeDaemon;
-  beforeEach(() => { polyfillDom(); d = setupModelHub(); });
+describe("设置 · 分类", () => {
+  beforeEach(() => { polyfillDom(); setupModelHub(); });
   afterEach(cleanup);
 
-  it("左侧导航列出所有分区，默认进入“模型”", async () => {
+  it("二级目录只列已实现的分类，默认进入“通用”", () => {
     renderAt("/settings");
-    for (const t of ["模型", "审批与安全", "通用", "外观", "关于", "组件展示"]) expect(screen.getByRole("tab", { name: t })).toBeTruthy();
-    expect(screen.getByRole("tab", { name: "模型" }).getAttribute("aria-selected")).toBe("true");
-    await waitFor(() => expect(screen.getByText("默认模型")).toBeTruthy());
+    const nav = screen.getByRole("navigation", { name: "设置分类" });
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["通用", "Pip 与成员", "模型与连接", "权限与安全", "关于"]);
+    expect(within(nav).getByRole("button", { name: "通用" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("radio", { name: "Enter 发送" })).toBeTruthy();
   });
 
-  it("?tab= 定位分区；点击导航切换", () => {
+  it("?tab= 定位分类；点击目录切换", () => {
     renderAt("/settings?tab=about");
     expect(screen.getByText("0.0.1")).toBeTruthy();
-    fireEvent.click(screen.getByRole("tab", { name: "通用" }));
-    expect(screen.getByText("已连接")).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "演示模式" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "权限与安全" }));
+    expect(screen.getByText(/仅允许这一次/)).toBeTruthy();
+  });
+});
+
+describe("设置 · 通用", () => {
+  beforeEach(() => { polyfillDom(); setupModelHub(); });
+  afterEach(() => { cleanup(); localStorage.clear(); });
+
+  it("发送方式保存到 localStorage", () => {
+    renderAt("/settings");
+    expect(screen.getByRole("radio", { name: "Enter 发送" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "Ctrl+Enter 发送" }));
+    expect(localStorage.getItem("muster.sendKey")).toBe("ctrl-enter");
+    expect(screen.getByRole("radio", { name: "Ctrl+Enter 发送" }).getAttribute("aria-checked")).toBe("true");
   });
 
-  it("审批档位保存到 localStorage", () => {
-    renderAt("/settings?tab=safety");
-    fireEvent.click(screen.getByRole("radio", { name: "谨慎" }));
-    expect(localStorage.getItem("muster.approvalLevel")).toBe("careful");
+  it("减少动态效果开关写入应用设置", () => {
+    renderAt("/settings");
+    fireEvent.click(screen.getByRole("switch", { name: "减少动态效果" }));
+    expect(localStorage.getItem("muster.reduceMotion")).toBe("1");
+    fireEvent.click(screen.getByRole("switch", { name: "减少动态效果" }));
+    expect(localStorage.getItem("muster.reduceMotion")).toBe("0");
+    expect(screen.getByRole("status").textContent).toBe("已保存");
+  });
+
+  it("发送方式保存后显示“已保存”", () => {
+    renderAt("/settings");
+    fireEvent.click(screen.getByRole("radio", { name: "Ctrl+Enter 发送" }));
+    expect(screen.getByRole("status").textContent).toBe("已保存");
+  });
+
+  it("写入失败时回滚并提示", () => {
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    try {
+      renderAt("/settings");
+      fireEvent.click(screen.getByRole("radio", { name: "Ctrl+Enter 发送" }));
+      expect(screen.getByRole("radio", { name: "Enter 发送" }).getAttribute("aria-checked")).toBe("true");
+      fireEvent.click(screen.getByRole("switch", { name: "减少动态效果" }));
+      expect(screen.getByRole("switch", { name: "减少动态效果" }).getAttribute("aria-checked")).toBe("false");
+      expect(screen.getAllByRole("status").map((n) => n.textContent)).toEqual(["保存失败，已恢复", "保存失败，已恢复"]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("深色主题标注未开放", () => {
+    renderAt("/settings");
+    expect(screen.getByText(/深色 · 未开放/)).toBeTruthy();
+  });
+});
+
+describe("设置 · Pip 与成员", () => {
+  afterEach(cleanup);
+
+  it("显示 Pip 的路由模型，并链接到团队页和模型设置", () => {
+    polyfillDom();
+    setupModelHub({ settings: { router: { provider: "moonshot", modelId: "kimi-k2" } } });
+    useHub.setState((s) => ({ model: { ...s.model, modelSettings: { router: { provider: "moonshot", modelId: "kimi-k2" } } } }));
+    renderAt("/settings?tab=crew");
+    expect(screen.getByText("moonshot / kimi-k2")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /前往团队/ }).getAttribute("href")).toBe("/crew");
+    expect(screen.getByRole("link", { name: "更改" }).getAttribute("href")).toBe("/settings?tab=models");
   });
 });
 
@@ -68,6 +123,36 @@ describe("设置 · 模型", () => {
     await waitFor(() =>
       expect(d.request).toHaveBeenCalledWith("model.settingsSet", { settings: { native: { provider: "moonshot", modelId: "kimi-k2" } } }),
     );
+  });
+
+  it("连接区显示守护进程状态与演示模式开关", async () => {
+    renderAt("/settings?tab=models");
+    expect(screen.getByText("已连接")).toBeTruthy();
+    expect(screen.getByText("ws://127.0.0.1:7788/ws")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "演示模式" }).getAttribute("aria-checked")).toBe("false");
+    await screen.findByTestId("provider-moonshot");
+  });
+
+  it("保存默认模型后显示“已保存”", async () => {
+    renderAt("/settings?tab=models");
+    const trigger = await screen.findByRole("combobox", { name: "原生成员默认模型" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(await screen.findByRole("option", { name: /Kimi K2/ }), { key: "Enter" });
+    expect(await screen.findByText("已保存")).toBeTruthy();
+  });
+
+  it("保存失败：提示失败并保持原值", async () => {
+    const impl = d.request.getMockImplementation()!;
+    d.request.mockImplementation(async (method: string, params: unknown) => {
+      if (method === "model.settingsSet") throw new Error("daemon 拒绝");
+      return impl(method, params);
+    });
+    renderAt("/settings?tab=models");
+    const trigger = await screen.findByRole("combobox", { name: "原生成员默认模型" });
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    fireEvent.keyDown(await screen.findByRole("option", { name: /Kimi K2/ }), { key: "Enter" });
+    expect(await screen.findByText("保存失败，已恢复")).toBeTruthy();
+    expect(trigger.textContent).toContain("未设置");
   });
 
   it("默认模型“测试”显示延迟与回复；失败显示友好原因", async () => {

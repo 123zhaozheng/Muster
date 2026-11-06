@@ -96,6 +96,25 @@ export function createRouter(o: RouterOptions): Router {
     };
   }
 
+  /** 把模型的思考落成主线上一条折叠的 thinking 条目；正文开始或调用结束时收起并记下用时。 */
+  function makeThinker() {
+    let cur: { id: EntryId; startedAt: number } | undefined;
+    return {
+      push(delta: string) {
+        if (!delta) return;
+        if (!cur) cur = { id: append({ kind: "thinking", botId: MAIN_BOT_ID, text: "", streaming: true }), startedAt: Date.now() };
+        hub.commit({ kind: "entry.delta", threadId: MAIN_THREAD_ID, entryId: cur.id, delta });
+      },
+      finish() {
+        if (!cur) return;
+        const { id, startedAt } = cur;
+        cur = undefined;
+        const e = (hub.model.entries[MAIN_THREAD_ID] ?? []).find((x) => x.id === id);
+        if (e?.kind === "thinking") hub.commit({ kind: "entry.replaced", entry: { ...e, streaming: false, durationMs: Math.max(0, Date.now() - startedAt) } });
+      },
+    };
+  }
+
   /** Pip 当前该用的模型：自己的 bot.model > 设置里的路由默认；未配置返回 undefined。 */
   function resolveModel() {
     const ms = o.modelService;
@@ -130,6 +149,7 @@ export function createRouter(o: RouterOptions): Router {
     let hint: { kind: "unconfigured" | "failed"; text: string } | undefined;
     const ref = resolveModel();
     const streamer = makeStreamer();
+    const thinker = makeThinker();
     if (ms && ref) {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), MODEL_TIMEOUT_MS);
@@ -137,11 +157,18 @@ export function createRouter(o: RouterOptions): Router {
         const pip = hub.model.bots[MAIN_BOT_ID];
         const d = await decideByModel({
           models: ms.models(), ref, bots, ...(pip ? { pip } : {}), history, skipEntryId: userId, text,
-          onDelta: (x) => streamer.push(x), signal: ctl.signal,
+          onDelta: (x) => {
+            thinker.finish();
+            streamer.push(x);
+          },
+          onThinking: (x) => thinker.push(x),
+          signal: ctl.signal,
         });
+        thinker.finish();
         streamer.finish(d.reply);
         return { plan: d, spoke: streamer.spoke };
       } catch (e) {
+        thinker.finish();
         streamer.finish();
         const why = e instanceof Error ? e.message : String(e);
         console.warn("[router] 模型路由失败，改用规则：", why);

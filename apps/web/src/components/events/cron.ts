@@ -13,7 +13,7 @@ export const CRON_PRESETS: { label: string; expr: string }[] = [
 
 export const TIMEZONES = ["Asia/Shanghai", "Asia/Tokyo", "Asia/Singapore", "UTC", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles"];
 
-export type CronCheck = { ok: true; next: Date[] } | { ok: false; error: string };
+type CronCheck = { ok: true; next: Date[] } | { ok: false; error: string };
 
 /** Same library the daemon uses, so the preview equals what will really fire. */
 export function checkCron(expr: string, tz: string, count = 3, from: Date = new Date()): CronCheck {
@@ -60,13 +60,29 @@ function zoned(date: Date, tz?: string): Zoned {
   return { y, m, d, hh: get("hour").padStart(2, "0"), mm: get("minute").padStart(2, "0"), wd: WEEKDAY[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]! };
 }
 
-/** "今天 09:00" / "明天 09:00" / "11月9日 周一 09:00", rendered in the rule's time zone. */
-export function formatFireTime(date: Date, tz: string | undefined, now: Date = new Date()): string {
+/** "11月9日 周一 09:00": always with the calendar date, rendered in the rule's time zone. */
+export function formatFireAt(date: Date, tz: string | undefined): string {
   const a = zoned(date, tz);
-  const b = zoned(now, tz);
-  const diff = Math.round((Date.UTC(a.y, a.m - 1, a.d) - Date.UTC(b.y, b.m - 1, b.d)) / 86_400_000);
-  const clock = `${a.hh}:${a.mm}`;
-  if (diff === 0) return `今天 ${clock}`;
-  if (diff === 1) return `明天 ${clock}`;
-  return `${a.m}月${a.d}日 ${a.wd} ${clock}`;
+  return `${a.m}月${a.d}日 ${a.wd} ${a.hh}:${a.mm}`;
+}
+
+const pad2 = (n: string) => n.padStart(2, "0");
+const WEEKDAY_NAME = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** Plain-language frequency for the common cron shapes; anything else falls back to the raw expression. */
+export function describeCron(expr: string): string {
+  const f = expr.trim().split(/\s+/);
+  if (f.length !== 5) return expr.trim();
+  const [min, hour, dom, mon, dow] = f as [string, string, string, string, string];
+  const num = /^\d+$/;
+  const step = /^\*\/(\d+)$/.exec(min);
+  if (step && hour === "*" && dom === "*" && mon === "*" && dow === "*") return `每 ${step[1]} 分钟`;
+  if (num.test(min) && hour === "*" && dom === "*" && mon === "*" && dow === "*") return min === "0" ? "每小时整点" : `每小时第 ${min} 分钟`;
+  if (!num.test(min) || !num.test(hour) || mon !== "*") return expr.trim();
+  const at = `${pad2(hour)}:${pad2(min)}`;
+  if (dom === "*" && dow === "*") return `每天 ${at}`;
+  if (dom === "*" && dow === "1-5") return `工作日 ${at}`;
+  if (dom === "*" && /^[0-7]$/.test(dow)) return `每周${WEEKDAY_NAME[Number(dow) % 7]} ${at}`;
+  if (num.test(dom) && dow === "*") return `每月 ${dom} 号 ${at}`;
+  return expr.trim();
 }

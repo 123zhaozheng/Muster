@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { bots, tasks, threads } from "@muster/protocol/fixtures";
+import type { Entry } from "@muster/protocol";
 import { useHub } from "../lib/hub";
-import { buildCommands, filterCommands } from "./commands";
-import { crumbsFor } from "./navigation";
+import { useCommandSearch } from "./CommandSearch";
+import { searchAll } from "./search";
 import { mountShell, resetShellState, stubBrowser, teardownShell } from "./testUtils";
-import { useCommandPalette } from "./CommandPalette";
 
 beforeEach(() => {
   stubBrowser();
@@ -18,72 +18,81 @@ afterEach(() => {
 
 const loc = () => screen.getByTestId("loc").textContent;
 const byId = <T extends { id: string }>(xs: T[]) => Object.fromEntries(xs.map((x) => [x.id, x]));
-const src = { bots: byId(bots), tasks: byId(tasks), threads: byId(threads) };
-const cmds = buildCommands(src, { toggleSidebar: () => undefined, mod: "Ctrl" });
+const entries: Record<string, Entry[]> = {
+  "thread-main": [
+    { id: "e1", threadId: "thread-main", ts: "2026-11-06T09:00:00Z", kind: "user", text: "帮我查一下退款流程" },
+    { id: "e2", threadId: "thread-main", ts: "2026-11-06T09:01:00Z", kind: "bot", botId: "bot-pip", text: "好的，我先让小探调研退款流程。" },
+  ],
+};
+const src = { bots: byId(bots), tasks: byId(tasks), threads: byId(threads), entries };
 
-describe("命令构建与过滤（纯函数）", () => {
-  it("包含页面、成员、任务与三个快捷动作", () => {
-    const labels = (g: string) => cmds.filter((c) => c.group === g).map((c) => c.label);
-    expect(labels("动作")).toEqual(expect.arrayContaining(["新建成员", "新建触发器", "打开设置 · 模型"]));
-    expect(labels("页面")).toEqual(expect.arrayContaining(["主线", "团队", "事件", "设备", "技能", "设置", "需要你", "成本", "记忆"]));
-    expect(labels("成员")).toEqual(expect.arrayContaining(["Pip", "小码", "阿克"]));
-    expect(cmds.find((c) => c.label === "新建成员")?.to).toBe("/crew?new=1");
-    expect(cmds.find((c) => c.label === "新建触发器")?.to).toBe("/events?new=1");
-    expect(cmds.find((c) => c.label === "打开设置 · 模型")?.to).toBe("/settings?tab=models");
-    expect(cmds.find((c) => c.id === "bot:bot-pip")?.to).toBe("/");
+describe("searchAll（纯函数）", () => {
+  it("空查询：页面、成员与最近工单，不含对话", () => {
+    const r = searchAll(src, "");
+    const groups = new Set(r.map((x) => x.group));
+    expect(groups).toEqual(new Set(["页面", "成员", "工单"]));
+    expect(r.filter((x) => x.group === "页面").map((x) => x.label)).toEqual(expect.arrayContaining(["主线", "团队", "事件", "资源库", "设备", "需要你", "记忆", "技能", "成本", "设置"]));
   });
 
-  it("按词过滤：多词 AND、标签前缀优先、无命中为空", () => {
-    expect(filterCommands(cmds, "新建").map((c) => c.label)).toEqual(expect.arrayContaining(["新建成员", "新建触发器"]));
-    expect(filterCommands(cmds, "小码")[0]?.group).toBe("成员");
-    expect(filterCommands(cmds, "settings model").map((c) => c.label)).toEqual(["打开设置 · 模型"]);
-    expect(filterCommands(cmds, "zzzz-not-exist")).toEqual([]);
-    expect(filterCommands(cmds, "").length).toBeGreaterThan(10);
+  it("多词 AND 过滤页面 / 成员 / 工单", () => {
+    expect(searchAll(src, "团队")[0]).toMatchObject({ group: "页面", to: "/crew" });
+    expect(searchAll(src, "小码").some((x) => x.group === "成员" && x.label === "小码")).toBe(true);
+    expect(searchAll(src, "写退款接口").find((x) => x.group === "工单")?.to).toBe("/task/task-refund-api");
+    expect(searchAll(src, "zzzz-not-exist")).toEqual([]);
+  });
+
+  it("成员：Pip 去主线，有工单的成员去最近工单，其余去团队页", () => {
+    expect(searchAll(src, "Pip").find((x) => x.id === "bot:bot-pip")?.to).toBe("/");
+    const taskBots = new Set(tasks.map((t) => t.botId));
+    for (const b of bots.filter((x) => x.id !== "bot-pip")) {
+      const to = searchAll(src, b.name).find((x) => x.id === `bot:${b.id}`)?.to;
+      if (taskBots.has(b.id)) expect(to).toMatch(/^\/task\//);
+      else expect(to).toBe("/crew");
+    }
+  });
+
+  it("对话：只搜已加载消息，结果指向所在线程并带 msg 参数", () => {
+    const r = searchAll(src, "退款流程").filter((x) => x.group === "对话");
+    expect(r).toHaveLength(2);
+    expect(r[0]!.to).toBe("/?msg=e2");
+    expect(r[0]!.hint).toBeTruthy();
+    expect(searchAll({ ...src, entries: {} }, "退款流程").some((x) => x.group === "对话")).toBe(false);
   });
 });
 
-describe("面包屑", () => {
-  it("页面标题、工作台“主线 › 任务名”、分支页三级", () => {
-    const t = { "task-1": { title: "修支付回调 bug" } };
-    expect(crumbsFor("/crew", t)).toEqual([{ label: "团队" }]);
-    expect(crumbsFor("/", t)).toEqual([{ label: "主线" }]);
-    expect(crumbsFor("/task/task-1", t)).toEqual([{ label: "主线", to: "/" }, { label: "修支付回调 bug" }]);
-    expect(crumbsFor("/task/task-1/branches", t)).toEqual([{ label: "主线", to: "/" }, { label: "修支付回调 bug", to: "/task/task-1" }, { label: "分支" }]);
-  });
-});
-
-describe("TopBar 与命令面板", () => {
-  it("顶部条展示面包屑与连接状态", async () => {
-    mountShell("/devices");
-    const crumbs = within(screen.getByRole("navigation", { name: "面包屑" }));
-    expect(crumbs.getByText("设备").getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("img", { name: /连接状态/ })).toBeTruthy();
-  });
-
-  it("点击搜索框 / Ctrl+K 打开，输入后 Enter 跳转，Esc 关闭", async () => {
+describe("全局搜索浮层", () => {
+  it("Ctrl+K 打开，输入后 Enter 打开所选项，Esc 关闭", async () => {
     mountShell("/");
     expect(screen.queryByRole("dialog")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    const input = await screen.findByRole("combobox", { name: "搜索命令" });
+    const input = await screen.findByRole("combobox", { name: "搜索" });
     fireEvent.change(input, { target: { value: "团队" } });
     await waitFor(() => expect(screen.getAllByRole("option")[0]?.textContent).toContain("团队"));
     fireEvent.keyDown(input, { key: "Enter" });
     expect(loc()).toBe("/crew");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("↑↓ 选择、点击成员 / 任务 / 动作跳转", async () => {
+  it("Esc 关闭后焦点回到打开前的元素", async () => {
+    mountShell("/");
+    const btn = screen.getByRole("button", { name: "搜索" });
+    btn.focus();
+    fireEvent.click(btn);
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(btn));
+  });
+
+  it("↑↓ 移动选中；点击工单 / 成员跳转到具体对象", async () => {
     mountShell("/");
     await waitFor(() => expect(Object.keys(useHub.getState().model.tasks).length).toBeGreaterThan(0));
-    const open = () => act(() => useCommandPalette.getState().setOpen(true));
-
-    open();
+    act(() => useCommandSearch.getState().setOpen(true));
     let input = await screen.findByRole("combobox");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(screen.getAllByRole("option")[1]!.getAttribute("aria-selected")).toBe("true");
@@ -91,70 +100,28 @@ describe("TopBar 与命令面板", () => {
     expect(screen.getAllByRole("option")[0]!.getAttribute("aria-selected")).toBe("true");
 
     fireEvent.change(input, { target: { value: "写退款接口" } });
-    const taskOpt = await screen.findByRole("option", { name: /写退款接口/ });
-    fireEvent.click(taskOpt);
+    fireEvent.click(await screen.findByRole("option", { name: /写退款接口/ }));
     expect(loc()).toBe("/task/task-refund-api");
 
-    open();
-    input = await screen.findByRole("combobox");
-    fireEvent.change(input, { target: { value: "新建成员" } });
-    fireEvent.click(await screen.findByRole("option", { name: /新建成员/ }));
-    expect(loc()).toBe("/crew?new=1");
-
-    open();
-    input = await screen.findByRole("combobox");
-    fireEvent.change(input, { target: { value: "设置 模型" } });
-    fireEvent.click(await screen.findByRole("option", { name: /打开设置 · 模型/ }));
-    expect(loc()).toBe("/settings?tab=models");
-
-    open();
+    act(() => useCommandSearch.getState().setOpen(true));
     input = await screen.findByRole("combobox");
     fireEvent.change(input, { target: { value: "小码" } });
-    fireEvent.click((await screen.findAllByRole("option", { name: /小码/ }))[0]!); // 成员分组排在任务之前
+    fireEvent.click((await screen.findAllByRole("option", { name: /小码/ }))[0]!);
     expect(loc()).toMatch(/^\/task\//);
   });
 
-  it("无结果时显示空态", async () => {
+  it("空结果与加载态", async () => {
     mountShell();
-    act(() => useCommandPalette.getState().setOpen(true));
+    act(() => useCommandSearch.getState().setOpen(true));
     fireEvent.change(await screen.findByRole("combobox"), { target: { value: "zzzzzz" } });
     expect(await screen.findByText(/没有找到/)).toBeTruthy();
-  });
+    cleanup();
+    teardownShell();
 
-  it("“收起 / 展开侧栏”动作", async () => {
+    resetShellState();
     mountShell();
-    act(() => useCommandPalette.getState().setOpen(true));
-    fireEvent.change(await screen.findByRole("combobox"), { target: { value: "侧栏" } });
-    fireEvent.click(await screen.findByRole("option", { name: /收起 \/ 展开侧栏/ }));
-    expect(screen.getByRole("complementary", { name: "侧栏" }).getAttribute("data-collapsed")).toBe("true");
-  });
-});
-
-describe("“需要你”铃铛", () => {
-  it("角标显示待审批数，点开浮层可直接允许，处理后角标消失", async () => {
-    mountShell();
-    await waitFor(() => expect(screen.getByTestId("bell-badge").textContent).toBe("1"));
-    const bell = screen.getByRole("button", { name: /需要你（1 项待处理）/ });
-    fireEvent.click(bell);
-
-    const pop = await screen.findByRole("dialog");
-    expect(within(pop).getAllByText(/pnpm/).length).toBeGreaterThan(0);
-    fireEvent.click(within(pop).getByRole("button", { name: "允许" }));
-
-    await waitFor(() => expect(screen.queryByTestId("bell-badge")).toBeNull());
-    expect(await within(screen.getByRole("dialog")).findByText("都处理完啦")).toBeTruthy();
-  });
-
-  it("可以直接拒绝；“全部查看”跳到收件箱", async () => {
-    mountShell("/crew");
-    await waitFor(() => expect(screen.getByTestId("bell-badge")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /需要你/ }));
-    const pop = await screen.findByRole("dialog");
-    fireEvent.click(within(pop).getByRole("link", { name: /全部查看/ }));
-    expect(loc()).toBe("/inbox");
-
-    fireEvent.click(screen.getByRole("button", { name: /需要你/ }));
-    fireEvent.click(await within(await screen.findByRole("dialog")).findByRole("button", { name: "拒绝" }));
-    await waitFor(() => expect(screen.queryByTestId("bell-badge")).toBeNull());
+    act(() => useHub.setState({ status: "connecting", model: { ...useHub.getState().model, bots: {} } }));
+    act(() => useCommandSearch.getState().setOpen(true));
+    expect(await screen.findByText("正在加载…")).toBeTruthy();
   });
 });

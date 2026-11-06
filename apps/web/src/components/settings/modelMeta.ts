@@ -1,7 +1,7 @@
 // 模型配置的纯函数：分组、格式化、校验、请求参数组装。UI 与测试共用。
 import type { ModelInfo, ModelProviderConfig, ModelRef, ModelSettings, ProviderCatalogEntry, ProviderKind } from "@muster/protocol";
 
-export const GROUP_ORDER = ["国内", "国际", "聚合", "本地"] as const;
+const GROUP_ORDER = ["国内", "国际", "聚合", "本地"] as const;
 
 export const KIND_LABEL: Record<ProviderKind, string> = {
   builtin: "内置",
@@ -69,10 +69,6 @@ export function valueToRef(v: string): ModelRef | undefined {
   return i < 0 ? undefined : { provider: v.slice(0, i), modelId: v.slice(i + 2) };
 }
 
-export function sameRef(a?: ModelRef, b?: ModelRef): boolean {
-  return a?.provider === b?.provider && a?.modelId === b?.modelId;
-}
-
 /** 合并默认模型设置：ref 为 undefined 表示清除。 */
 export function withSetting(settings: ModelSettings, key: keyof ModelSettings, ref?: ModelRef): ModelSettings {
   const next: ModelSettings = { ...settings };
@@ -127,7 +123,7 @@ export function splitModelIds(raw: string): string[] {
 }
 
 export type UpsertParams = { provider: ProviderUpsertInput; apiKey?: string };
-export type ProviderUpsertInput = Omit<ModelProviderConfig, "id" | "hasApiKey" | "createdAt"> & { id?: string };
+type ProviderUpsertInput = Omit<ModelProviderConfig, "id" | "hasApiKey" | "createdAt"> & { id?: string };
 
 /** 内置 provider：只需 API Key。 */
 export function builtinUpsert(entry: ProviderCatalogEntry, apiKey: string, existing?: ModelProviderConfig): UpsertParams {

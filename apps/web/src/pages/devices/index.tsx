@@ -1,13 +1,12 @@
-import { useMemo } from "react";
-import { Cpu, Plus, Wifi, WifiOff } from "lucide-react";
-import { Button, Empty, Section, StatCard } from "@muster/ui";
+import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
+import { Button, EmptyState, PageHeader } from "@muster/ui";
 import { useHub } from "../../lib/hub";
-import { Page, PageBody, PageGrid, PageHeader } from "../../components/layout";
-import { DeviceCard } from "../../components/devices/DeviceCard";
+import { ListDetail } from "../../components/layout";
+import { DeviceDetail } from "../../components/devices/DeviceDetail";
+import { DeviceRow } from "../../components/devices/DeviceRow";
 import { PairCard } from "../../components/devices/PairCard";
-import { RemoteBrowserPanel } from "../../components/devices/RemoteBrowserPanel";
-import { HeaderTile } from "../../components/events/HeaderTile";
-import { useNow } from "../../components/events/time";
+import { useNow } from "../../shell/useNow";
 
 export default function DevicesPage() {
   const deviceMap = useHub((s) => s.model.devices);
@@ -19,53 +18,65 @@ export default function DevicesPage() {
     return m;
   }, [triggerMap]);
   const now = useNow();
-  const online = devices.filter((d) => d.online).length;
+
+  const [selectedId, setSelectedId] = useState<string>();
+  const [showDetail, setShowDetail] = useState(false);
+  const selected = devices.find((d) => d.id === selectedId) ?? devices[0];
 
   const focusPairing = () => {
-    const el = document.getElementById("pair-card");
-    el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    el?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus({ preventScroll: true });
+    setShowDetail(false);
+    requestAnimationFrame(() => {
+      const el = document.getElementById("pair-card");
+      el?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      el?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus({ preventScroll: true });
+    });
   };
 
   return (
-    <Page>
-      <PageHeader
-        title="设备"
-        subtitle="管理你的设备，随时随地让 AI 代理为你工作"
-        leading={<HeaderTile shape="egg" color="sky" status="idle" />}
-        actions={
-          <Button variant="primary" icon={<Plus className="size-4" />} onClick={focusPairing}>
-            配对新设备
-          </Button>
-        }
-      />
-
-      <div className="muster-stagger grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-5">
-        <StatCard label="设备总数" value={devices.length} suffix=" 台" icon={<Cpu />} tone="sky" hint="含本机" />
-        <StatCard label="在线设备" value={online} suffix=" 台" icon={<Wifi />} tone="mint" hint="可以接收任务" />
-        <StatCard label="离线设备" value={devices.length - online} suffix=" 台" icon={<WifiOff />} tone="neutral" hint="上线后自动恢复" />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-14 shrink-0 items-center border-b border-border px-5 py-3 md:px-8 [&>*]:w-full">
+        <PageHeader
+          title="设备"
+          subtitle="本机与已配对的电脑、服务器"
+          actions={
+            <Button variant="primary" icon={<Plus className="size-4" />} onClick={focusPairing}>
+              配对新设备
+            </Button>
+          }
+        />
       </div>
-
-      <PageBody
-        railWidth={380}
-        main={
-          <>
-            <Section title="我的设备" description="本机与已配对的电脑、服务器">
+      <div className="min-h-0 flex-1">
+        <ListDetail
+          listWidth={360}
+          showDetail={showDetail}
+          onBack={() => setShowDetail(false)}
+          backLabel="返回设备列表"
+          list={
+            <div className="space-y-5 p-3">
               {devices.length === 0 ? (
-                <Empty title="还没有设备" description="在右侧生成配对码，把第二台电脑接进来。" pebble={{ shape: "egg", color: "sky", status: "sleeping" }} />
+                <p className="px-3 py-4 text-sm text-fg-2">还没有设备。生成配对码，把第二台电脑接进来。</p>
               ) : (
-                <PageGrid min={300}>
+                <ul className="space-y-1" aria-label="设备列表">
                   {devices.map((d) => (
-                    <DeviceCard key={d.id} device={d} now={now} ruleCount={ruleCount[d.id] ?? 0} />
+                    <li key={d.id}>
+                      <DeviceRow
+                        device={d}
+                        selected={d.id === selected?.id}
+                        onSelect={() => {
+                          setSelectedId(d.id);
+                          setShowDetail(true);
+                        }}
+                      />
+                    </li>
                   ))}
-                </PageGrid>
+                </ul>
               )}
-            </Section>
-            <RemoteBrowserPanel />
-          </>
-        }
-        rail={<PairCard />}
-      />
-    </Page>
+              <PairCard />
+            </div>
+          }
+          detail={selected ? <DeviceDetail device={selected} now={now} ruleCount={ruleCount[selected.id] ?? 0} /> : <EmptyState title="还没有设备" description="在左侧生成配对码，把第二台电脑接进来。" />}
+        />
+      </div>
+    </div>
   );
 }

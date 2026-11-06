@@ -164,6 +164,49 @@ describe("claude driver: event mapping", () => {
     await s.close();
   });
 
+  it("maps streamed thinking blocks to thinking_delta / thinking_done before the answer", async () => {
+    const { driver, procs } = harness();
+    const s = await driver.start({ cwd: "/w", prompt: "想一想" });
+    const r = reader(s);
+    const p = procs[0]!;
+    p.emitMsg(stream({ type: "message_start", message: { id: "m1" } }));
+    p.emitMsg(stream({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }));
+    p.emitMsg(stream({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "先看" } }));
+    p.emitMsg(stream({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "回调" } }));
+    p.emitMsg(stream({ type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "sig" } }));
+    p.emitMsg({ type: "assistant", uuid: "u-t", parent_tool_use_id: null, message: { id: "m1", role: "assistant", content: [{ type: "thinking", thinking: "先看回调", signature: "sig" }] } });
+    p.emitMsg(stream({ type: "content_block_stop", index: 0 }));
+    p.emitMsg(stream({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }));
+    p.emitMsg(stream({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text: "好" } }));
+    p.emitMsg(stream({ type: "content_block_stop", index: 1 }));
+    p.emitMsg(result());
+    expect(await r.until(isEnd)).toEqual([
+      { t: "turn_start", turn: 1 },
+      { t: "thinking_delta", delta: "先看" },
+      { t: "thinking_delta", delta: "回调" },
+      { t: "thinking_done" },
+      { t: "text_delta", delta: "好" },
+      { t: "text_done" },
+      { t: "turn_end", status: "completed", usage: { tokens: 115, costUsd: 0.35 } },
+    ]);
+    await s.close();
+  });
+
+  it("emits un-streamed thinking once when partial messages are absent", async () => {
+    const { driver, procs } = harness();
+    const s = await driver.start({ cwd: "/w", prompt: "x" });
+    const r = reader(s);
+    procs[0]!.emitMsg({ type: "assistant", uuid: "u-9", parent_tool_use_id: null, message: { id: "m9", role: "assistant", content: [{ type: "thinking", thinking: "直接思考" }, { type: "thinking", thinking: "" }] } });
+    procs[0]!.emitMsg(result());
+    expect(await r.until(isEnd)).toEqual([
+      { t: "turn_start", turn: 1 },
+      { t: "thinking_delta", delta: "直接思考" },
+      { t: "thinking_done" },
+      { t: "turn_end", status: "completed", usage: { tokens: 115, costUsd: 0.35 } },
+    ]);
+    await s.close();
+  });
+
   it("maps tool_use + tool_result: Read=read, Bash=command, Edit/Write=edit (+diff)", async () => {
     const { driver, procs } = harness();
     const s = await driver.start({ cwd: "/work", prompt: "x" });

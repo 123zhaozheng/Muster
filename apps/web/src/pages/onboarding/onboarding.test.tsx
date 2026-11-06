@@ -54,7 +54,6 @@ describe("首次引导", () => {
 
   it("名字实时预览；名字为空时不能下一步，并给出校验提示", () => {
     renderPage();
-    next();
     fireEvent.change(screen.getByLabelText("主 Bot 名字"), { target: { value: "团子" } });
     expect(screen.getByTestId("name-preview").textContent).toBe("团子");
     fireEvent.change(screen.getByLabelText("主 Bot 名字"), { target: { value: "  " } });
@@ -62,27 +61,26 @@ describe("首次引导", () => {
     expect(screen.getByText("名字不能为空")).toBeTruthy();
   });
 
-  it("共 5 步：欢迎 → 形象 → 模型 → Agent → 完成，指示器标出当前步", () => {
+  it("共 4 步：形象 → 模型 → Agent → 完成，指示器标出当前步", () => {
     renderPage();
     const steps = screen.getByRole("list", { name: "步骤" });
-    expect(steps.querySelectorAll("li").length).toBe(5);
-    expect(steps.querySelector('[aria-current="step"]')?.textContent).toContain("欢迎");
-    next(); next();
+    expect(steps.querySelectorAll("li").length).toBe(4);
+    expect(steps.querySelector('[aria-current="step"]')?.textContent).toContain("形象");
+    next();
     expect(steps.querySelector('[aria-current="step"]')?.textContent).toContain("模型");
   });
 
-  it("走完 5 步：检测 Agent、完成后写入 muster.onboarded、同步 bot.update 并跳转 /", async () => {
+  it("走完 4 步：检测 Agent、完成后写入 muster.onboarded、同步 bot.update 并跳转 /", async () => {
     const request = setupModelHub();
     renderPage();
-    next(); // 形象
     fireEvent.click(screen.getByRole("radio", { name: "蜜桃" }));
     next(); // 模型（稍后再说）
     fireEvent.click(screen.getByRole("button", { name: /稍后再说/ }));
-    expect(step()).toBe("3");
+    expect(step()).toBe("2");
     await waitFor(() => expect(screen.getByText("已检测到")).toBeTruthy());
     next(); // 完成
-    expect(step()).toBe("4");
-    expect(screen.getByText(/稍后在 设置 · 模型 中配置/)).toBeTruthy();
+    expect(step()).toBe("3");
+    expect(screen.getByText(/稍后在 设置 · 模型与连接 中配置/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "开始使用" }));
     expect(localStorage.getItem("muster.onboarded")).toBe("1");
     expect(JSON.parse(localStorage.getItem("muster.mainBotProfile")!).color).toBe("peach");
@@ -93,7 +91,7 @@ describe("首次引导", () => {
   it("模型步骤：选 provider、填 key、连接、测试并保存为默认模型", async () => {
     const request = setupModelHub();
     renderPage();
-    next(); next();
+    next();
     fireEvent.click(await screen.findByRole("button", { name: /DeepSeek/ }));
     // 没填 key 时先给校验提示，不发请求
     fireEvent.click(screen.getByRole("button", { name: "连接并获取模型" }));
@@ -122,7 +120,7 @@ describe("首次引导", () => {
   it("模型测试失败：显示错误，不保存设置", async () => {
     const request = setupModelHub({ testOk: false });
     renderPage();
-    next(); next();
+    next();
     fireEvent.click(await screen.findByRole("button", { name: /DeepSeek/ }));
     fireEvent.change(document.getElementById("ob-key")!, { target: { value: "sk-bad" } });
     fireEvent.click(screen.getByRole("button", { name: "连接并获取模型" }));

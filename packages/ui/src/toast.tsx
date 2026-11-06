@@ -1,14 +1,10 @@
 import { useSyncExternalStore, type ReactNode } from "react";
-import type { BotStatus } from "@muster/protocol";
-import { AnimatePresence, motion } from "motion/react";
-import { X } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, Loader2, TriangleAlert, X } from "lucide-react";
 import { cn } from "./cn";
-import { EASE, usePrefersReducedMotion } from "./motion";
-import { Pebble } from "./Pebble";
 
-export type ToastTone = "success" | "error" | "info" | "warning" | "loading";
+type ToastTone = "success" | "error" | "info" | "warning" | "loading";
 
-export interface ToastOptions {
+interface ToastOptions {
   /** Reuse an id to update an existing toast in place (e.g. loading -> success). */
   id?: string;
   title: ReactNode;
@@ -85,13 +81,12 @@ const subscribe = (cb: () => void) => {
 };
 const getItems = () => items;
 
-const TONE_STATUS: Record<ToastTone, BotStatus> = { success: "done", error: "error", info: "idle", warning: "waiting_approval", loading: "working" };
-const TONE_BAR: Record<ToastTone, string> = {
-  success: "bg-mint",
-  error: "bg-danger",
-  info: "bg-lavender",
-  warning: "bg-amber",
-  loading: "bg-coral",
+const TONE_ICON: Record<ToastTone, { icon: ReactNode; className: string }> = {
+  success: { icon: <CircleCheck className="size-4" />, className: "text-success" },
+  error: { icon: <CircleAlert className="size-4" />, className: "text-danger" },
+  info: { icon: <Info className="size-4" />, className: "text-accent" },
+  warning: { icon: <TriangleAlert className="size-4" />, className: "text-warning" },
+  loading: { icon: <Loader2 className="size-4 animate-spin" />, className: "text-accent" },
 };
 
 const POSITION = {
@@ -100,57 +95,50 @@ const POSITION = {
   "top-right": "top-5 right-5 items-end",
 } as const;
 
-export interface ToasterProps {
+interface ToasterProps {
   position?: keyof typeof POSITION;
   className?: string;
 }
 /** Renders the toast stack. Mount once, e.g. next to the router. */
 export function Toaster({ position = "bottom-right", className }: ToasterProps) {
   const list = useSyncExternalStore(subscribe, getItems, getItems);
-  const reduced = usePrefersReducedMotion();
   return (
-    <div role="region" aria-label="通知" aria-live="polite" className={cn("muster-toaster pointer-events-none flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2.5", POSITION[position], className)}>
-      <AnimatePresence initial={false}>
-        {list.map((t) => (
-          <motion.div
-            key={t.id}
-            layout={!reduced}
-            initial={reduced ? false : { opacity: 0, y: 16, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={reduced ? { opacity: 0 } : { opacity: 0, x: 40, scale: 0.96 }}
-            transition={{ duration: 0.3, ease: EASE as unknown as [number, number, number, number] }}
-            role={t.tone === "error" ? "alert" : "status"}
-            className="muster-glass-3 pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-2xl py-3 pl-4 pr-3"
+    <div role="region" aria-label="通知" aria-live="polite" className={cn("pointer-events-none fixed z-[100] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2", POSITION[position], className)}>
+      {list.map((t) => (
+        <div
+          key={t.id}
+          role={t.tone === "error" ? "alert" : "status"}
+          className="muster-toast pointer-events-auto flex w-full items-start gap-3 rounded-card border border-border bg-surface py-3 pl-4 pr-2 shadow-overlay"
+        >
+          <span className={cn("mt-0.5 shrink-0", TONE_ICON[t.tone].className)} aria-hidden>
+            {TONE_ICON[t.tone].icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium leading-5 text-fg">{t.title}</div>
+            {t.description && <div className="mt-0.5 text-caption text-fg-2">{t.description}</div>}
+            {t.action && (
+              <button
+                type="button"
+                className="mt-1.5 cursor-pointer text-caption font-medium text-accent hover:underline"
+                onClick={() => {
+                  t.action?.onClick();
+                  remove(t.id);
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label="关闭通知"
+            onClick={() => remove(t.id)}
+            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-control text-fg-3 transition-colors hover:bg-surface-muted hover:text-fg"
           >
-            <span className={cn("absolute inset-y-0 left-0 w-1", TONE_BAR[t.tone])} aria-hidden />
-            <Pebble status={TONE_STATUS[t.tone]} size={34} lite className="mt-0.5" />
-            <div className="min-w-0 flex-1 py-0.5">
-              <div className="text-sm font-semibold leading-5 text-ink">{t.title}</div>
-              {t.description && <div className="mt-0.5 text-[13px] leading-5 text-ink-soft">{t.description}</div>}
-              {t.action && (
-                <button
-                  type="button"
-                  className="mt-1.5 cursor-pointer text-[13px] font-medium text-coral-deep hover:underline"
-                  onClick={() => {
-                    t.action?.onClick();
-                    remove(t.id);
-                  }}
-                >
-                  {t.action.label}
-                </button>
-              )}
-            </div>
-            <button
-              type="button"
-              aria-label="关闭通知"
-              onClick={() => remove(t.id)}
-              className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-ink-faint transition-colors hover:bg-canvas-deep hover:text-ink"
-            >
-              <X className="size-3.5" />
-            </button>
-          </motion.div>
-        ))}
-      </AnimatePresence>
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

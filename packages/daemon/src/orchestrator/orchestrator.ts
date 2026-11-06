@@ -43,6 +43,8 @@ interface Runtime {
   /** 已送入运行中 turn、等待 steer_applied 的插话。 */
   steers: { entryId: EntryId; text: string }[];
   text?: { id: EntryId };
+  /** 正在流式输出的思考块；startedAt 用于计算“已思考 Xs”。 */
+  thinking?: { id: EntryId; startedAt: number };
   tools?: ToolSummaryEntry;
   /** approvalId -> 引擎侧 requestId。 */
   approvals: Map<ApprovalId, string>;
@@ -275,8 +277,18 @@ export function createOrchestrator(o: OrchestratorOptions): Orchestrator {
     rt.text = undefined;
   }
 
-  /** 非 tool 事件到来：结束当前文本与工具聚合。 */
+  function finalizeThinking(rt: Runtime): void {
+    if (!rt.thinking) return;
+    const cur = getEntry(rt.threadId, rt.thinking.id);
+    if (cur?.kind === "thinking") {
+      hub.commit({ kind: "entry.replaced", entry: { ...cur, streaming: false, durationMs: Math.max(0, Date.now() - rt.thinking.startedAt) } });
+    }
+    rt.thinking = undefined;
+  }
+
+  /** 非 tool 事件到来：结束当前思考、文本与工具聚合。 */
   function closeOpen(rt: Runtime): void {
+    finalizeThinking(rt);
     finalizeText(rt);
     rt.tools = undefined;
   }
@@ -287,6 +299,7 @@ export function createOrchestrator(o: OrchestratorOptions): Orchestrator {
   }
 
   function onTool(rt: Runtime, ev: Extract<DriverEvent, { t: "tool" }>): void {
+    finalizeThinking(rt);
     finalizeText(rt);
     const item: ToolItem = {
       tool: ev.tool, label: ev.label,
@@ -367,8 +380,24 @@ export function createOrchestrator(o: OrchestratorOptions): Orchestrator {
         refreshBot(rt.botId, { status: "working", detail: active.title });
         return;
       }
+      case "thinking_delta": {
+        if (!ev.delta) return;
+        finalizeText(rt);
+        rt.tools = undefined;
+        if (rt.thinking) {
+          hub.commit({ kind: "entry.delta", threadId: rt.threadId, entryId: rt.thinking.id, delta: ev.delta });
+        } else {
+          const e = appendTurn(rt, { ...base(rt.threadId), kind: "thinking", botId: rt.botId, text: ev.delta, streaming: true });
+          rt.thinking = { id: e.id, startedAt: Date.now() };
+        }
+        return;
+      }
+      case "thinking_done":
+        finalizeThinking(rt);
+        return;
       case "text_delta": {
         if (!ev.delta) return;
+        finalizeThinking(rt);
         rt.tools = undefined;
         if (rt.text) {
           hub.commit({ kind: "entry.delta", threadId: rt.threadId, entryId: rt.text.id, delta: ev.delta });
@@ -674,7 +703,7 @@ export function createOrchestrator(o: OrchestratorOptions): Orchestrator {
       const id = hub.newId("entry");
       idMap.set(e.id, id);
       const copy = structuredClone(e) as Entry;
-      return copy.kind === "bot" ? { ...copy, id, threadId: newThreadId, streaming: false } : { ...copy, id, threadId: newThreadId };
+      return copy.kind === "bot" || copy.kind === "thinking" ? { ...copy, id, threadId: newThreadId, streaming: false } : { ...copy, id, threadId: newThreadId };
     });
 
     hub.commit({ kind: "thread.updated", thread: { id: newThreadId, title, botId: bot.id, taskId: newTaskId, createdAt: now, updatedAt: now, lastText: `从「${src.title}」分支` } });

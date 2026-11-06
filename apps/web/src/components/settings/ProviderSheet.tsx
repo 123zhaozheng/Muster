@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check, KeyRound, Plug, Trash2, Zap } from "lucide-react";
 import type { ModelProviderConfig, ProviderCatalogEntry } from "@muster/protocol";
-import { Button, Chip, Field, Input, Segmented, Sheet, SheetContent, cn, toast } from "@muster/ui";
+import { Button, Badge, Field, Input, Segmented, Drawer, DrawerContent, cn, toast } from "@muster/ui";
 import { hubRequest } from "../../lib/hub";
 import { TagInput } from "./TagInput";
 import {
@@ -12,22 +12,10 @@ import {
 type Mode = "catalog" | "custom";
 type TestState = { phase: "idle" } | { phase: "running" } | { phase: "done"; ok: boolean; latencyMs?: number; reply?: string; error?: string };
 
-const BADGE_TONES = ["#ff6b4a", "#8b7cf6", "#3fb68b", "#e9a23b", "#4a9fe0", "#e25d86"];
-function badgeColor(seed: string): string {
-  let h = 0;
-  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return BADGE_TONES[h % BADGE_TONES.length]!;
-}
-
-/** 首字母徽标：同一个服务始终同一种颜色。 */
-export function ProviderBadge({ name, seed, size = 40 }: { name: string; seed?: string; size?: number }) {
-  const c = badgeColor(seed ?? name);
+/** 首字母徽标：中性底色，不用品牌色。 */
+export function ProviderBadge({ name, size = 36 }: { name: string; size?: number }) {
   return (
-    <span
-      aria-hidden
-      className="grid shrink-0 place-items-center rounded-2xl font-semibold text-white shadow-soft"
-      style={{ width: size, height: size, fontSize: size * 0.42, background: `linear-gradient(135deg, ${c}, color-mix(in oklab, ${c} 70%, #5b2a10))` }}
-    >
+    <span aria-hidden className="grid shrink-0 place-items-center rounded-control bg-surface-muted font-semibold text-fg-2" style={{ width: size, height: size, fontSize: size * 0.42 }}>
       {initialOf(name)}
     </span>
   );
@@ -161,15 +149,15 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
   const busy = saving || test.phase === "running";
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent
         width={580}
         title={title}
         description={isEdit ? "Key 留空表示不修改；Key 只保存在本机 daemon，不会回显。" : "从内置目录里选一个，或接入任意 OpenAI / Anthropic 兼容的服务。"}
         footer={
           showForm ? (
             <div className="flex w-full items-center gap-2">
-              <Button variant="outline" icon={<Plug className="size-4" />} loading={test.phase === "running"} disabled={saving} onClick={onTest}>测试连接</Button>
+              <Button variant="secondary" icon={<Plug className="size-4" />} loading={test.phase === "running"} disabled={saving} onClick={onTest}>测试连接</Button>
               <span className="flex-1" />
               <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>取消</Button>
               <Button variant="primary" loading={saving} disabled={test.phase === "running"} onClick={onSave}>保存</Button>
@@ -192,10 +180,10 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
 
           {mode === "catalog" && !picked && (
             <div className="grid gap-5">
-              {groups.length === 0 && <p className="text-sm text-ink-soft">目录为空。</p>}
+              {groups.length === 0 && <p className="text-sm text-fg-2">目录为空。</p>}
               {groups.map(({ group, items }) => (
                 <div key={group}>
-                  <div className="mb-2 text-xs font-medium text-ink-faint">{group}</div>
+                  <div className="mb-2 text-xs font-medium text-fg-3">{group}</div>
                   <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     {items.map((c) => {
                       const added = configured.has(c.id);
@@ -207,18 +195,18 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
                           onClick={() => setPicked(c)}
                           aria-label={`选择 ${c.name}`}
                           className={cn(
-                            "group flex cursor-pointer items-center gap-3 rounded-2xl border border-line bg-surface p-3 text-left shadow-soft transition-[transform,box-shadow,border-color] duration-200 ease-muster",
-                            "hover:-translate-y-0.5 hover:border-coral/50 hover:shadow-lift focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-coral/15",
-                            "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0 disabled:hover:shadow-soft",
+                            "flex cursor-pointer items-center gap-3 rounded-card border border-border bg-surface p-3 text-left transition-colors duration-150",
+                            "hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                            "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border",
                           )}
                         >
-                          <ProviderBadge name={c.name} seed={c.id} size={38} />
+                          <ProviderBadge name={c.name} />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-ink">{c.name}</span>
-                            <span className="block text-xs text-ink-faint">{c.modelCount} 个模型</span>
-                            {c.envConfigured && !added && <span className="mt-0.5 block text-[11px] text-mint-deep" title={c.envVar}>已检测到环境变量</span>}
+                            <span className="block truncate text-sm font-medium text-fg">{c.name}</span>
+                            <span className="block text-xs text-fg-3">{c.modelCount} 个模型</span>
+                            {c.envConfigured && !added && <span className="mt-0.5 block text-xs text-success" title={c.envVar}>已检测到环境变量</span>}
                           </span>
-                          {added && <Chip tone="mint" icon={<Check className="size-3" />}>已添加</Chip>}
+                          {added && <Badge tone="success" icon={<Check className="size-3" />}>已添加</Badge>}
                         </button>
                       );
                     })}
@@ -230,11 +218,11 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
 
           {isBuiltinForm && picked && (
             <div className="grid gap-5">
-              <div className="flex items-center gap-3 rounded-2xl bg-canvas-deep/70 p-3.5">
-                <ProviderBadge name={picked.name} seed={picked.id} />
+              <div className="flex items-center gap-3 rounded-card bg-surface-muted p-3.5">
+                <ProviderBadge name={picked.name} />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[15px] font-semibold text-ink">{picked.name}</div>
-                  <div className="truncate font-mono text-xs text-ink-faint">{picked.baseUrl ?? picked.id}</div>
+                  <div className="text-[15px] font-semibold text-fg">{picked.name}</div>
+                  <div className="truncate font-mono text-xs text-fg-3">{picked.baseUrl ?? picked.id}</div>
                 </div>
                 {!isEdit && (
                   <Button size="sm" variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={() => { setPicked(undefined); setErrors({}); setApiKey(""); setTest({ phase: "idle" }); }}>
@@ -243,7 +231,7 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
                 )}
               </div>
               {picked.envConfigured && (
-                <div className="rounded-2xl bg-mint-soft/60 px-4 py-2.5 text-sm text-mint-deep">
+                <div className="rounded-control bg-success-surface px-4 py-2.5 text-sm text-success">
                   已检测到环境变量 <span className="font-mono">{picked.envVar}</span>，Key 可以留空直接使用。
                 </div>
               )}
@@ -288,7 +276,7 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
           {showForm && test.phase === "done" && (
             <div
               role="status"
-              className={cn("muster-fade-in rounded-2xl px-4 py-3 text-sm", test.ok ? "bg-mint-soft/70 text-mint-deep" : "bg-danger/10 text-danger-deep")}
+              className={cn("muster-fade-in rounded-control px-4 py-3 text-sm", test.ok ? "bg-success-surface text-success" : "bg-danger-surface text-danger")}
             >
               {test.ok ? (
                 <>
@@ -304,13 +292,13 @@ export function ProviderSheet({ open, onOpenChange, catalog, providers, editing,
             </div>
           )}
           {showForm && !isEdit && test.phase === "idle" && (
-            <p className="flex items-center gap-1.5 text-xs text-ink-faint">
+            <p className="flex items-center gap-1.5 text-xs text-fg-3">
               <Zap className="size-3.5" /> “测试连接”会先保存这项配置，再发一次很小的请求验证。
             </p>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -335,7 +323,7 @@ function KeyField({ value, onChange, hasKey, clearKey, onToggleClear, error, hin
     <Field label="API Key" htmlFor="prov-key" required={required} error={error} hint={sub}>
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-faint" />
+          <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
           <Input
             id="prov-key"
             type="password"
@@ -350,7 +338,7 @@ function KeyField({ value, onChange, hasKey, clearKey, onToggleClear, error, hin
           />
         </div>
         {hasKey && (
-          <Button type="button" size="sm" variant={clearKey ? "soft" : "outline"} icon={<Trash2 className="size-3.5" />} onClick={onToggleClear}>
+          <Button type="button" size="sm" variant="secondary" icon={<Trash2 className="size-3.5" />} onClick={onToggleClear}>
             {clearKey ? "撤销清除" : "清除 Key"}
           </Button>
         )}

@@ -1,9 +1,9 @@
-// OWNER: W1. WebSocket 客户端：请求/响应关联、请求超时、断线时请求立即失败、
+// WebSocket 客户端：请求/响应关联、请求超时、断线时请求立即失败、
 // 指数退避自动重连（重连成功后 hub.ts 在 status 变 "open" 时重新拉 snapshot）。
 import type { MethodName, Methods, ServerMessage, WirePush, WireRequest } from "@muster/protocol";
 import type { MusterClient } from "@muster/protocol/client";
 
-export interface WsClientOptions {
+interface WsClientOptions {
   /** 单个请求的超时（毫秒），默认 15000。 */
   timeoutMs?: number;
   /** 重连退避上限（毫秒），默认 5000。 */

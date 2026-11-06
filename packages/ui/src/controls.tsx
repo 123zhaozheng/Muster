@@ -1,22 +1,15 @@
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "./cn";
-import { Button } from "./basics";
+import { Button, BUTTON_VARIANT } from "./basics";
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogTrigger, Tooltip } from "./overlays";
-import { Pebble } from "./Pebble";
 
 /* ───────── IconButton ───────── */
-type IconVariant = "ghost" | "soft" | "outline" | "primary";
-const ICON_VARIANT: Record<IconVariant, string> = {
-  ghost: "text-ink-soft hover:bg-canvas-deep hover:text-ink",
-  soft: "bg-coral-soft text-coral-deep hover:bg-coral-soft/70",
-  outline: "border border-line bg-surface text-ink-soft shadow-soft hover:bg-canvas-deep hover:text-ink",
-  primary: "muster-gradient-brand text-white shadow-glow-coral hover:brightness-105",
-};
-const ICON_SIZE = { sm: "size-8 [&_svg]:size-4", md: "size-10 [&_svg]:size-[18px]", lg: "size-12 [&_svg]:size-5" } as const;
+type IconVariant = "ghost" | "secondary" | "primary";
+const ICON_SIZE = { sm: "size-8 [&_svg]:size-4", md: "size-9 [&_svg]:size-[18px]", lg: "size-10 [&_svg]:size-5" } as const;
 
-export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> {
-  /** Accessible name; also the tooltip text. Required because there is no visible text. */
+interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> {
+  /** Accessible name (aria-label) and tooltip text. Required because there is no visible text. */
   label: string;
   variant?: IconVariant;
   size?: keyof typeof ICON_SIZE;
@@ -25,24 +18,25 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   /** Show the tooltip (default true). */
   tooltip?: boolean;
   loading?: boolean;
-  /** Small dot/number slot in the top-right corner (e.g. a CountBadge). */
+  /** Small slot in the top-right corner (e.g. a CountBadge). */
   badge?: ReactNode;
 }
-/** Round icon-only button with tooltip, hover/active/focus states. Pass the icon as children. */
-export function IconButton({ label, variant = "ghost", size = "md", shortcut, tooltip = true, loading, badge, className, children, disabled, ...rest }: IconButtonProps) {
+/** Icon-only button with a mandatory accessible name. Pass the icon as children. */
+export function IconButton({ label, variant = "ghost", size = "md", shortcut, tooltip = true, loading, badge, className, children, disabled, type = "button", ...rest }: IconButtonProps) {
   const btn = (
     <button
+      type={type}
       aria-label={label}
       disabled={disabled || loading}
       className={cn(
-        "relative inline-grid shrink-0 cursor-pointer place-items-center rounded-full transition-[transform,background-color,color,box-shadow,filter] duration-200 ease-muster active:scale-90 disabled:pointer-events-none disabled:opacity-50",
-        ICON_VARIANT[variant],
+        "relative inline-grid shrink-0 cursor-pointer place-items-center rounded-control transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50",
+        BUTTON_VARIANT[variant],
         ICON_SIZE[size],
         className,
       )}
       {...rest}
     >
-      {loading ? <Loader2 className="muster-spin" aria-hidden /> : children}
+      {loading ? <Loader2 className="animate-spin" aria-hidden /> : children}
       {badge && <span className="absolute -right-1 -top-1">{badge}</span>}
     </button>
   );
@@ -56,7 +50,7 @@ export function IconButton({ label, variant = "ghost", size = "md", shortcut, to
 }
 
 /* ───────── ConfirmDialog ───────── */
-export interface ConfirmDialogProps {
+interface ConfirmDialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   /** Uncontrolled usage: the element that opens the dialog. */
@@ -97,12 +91,9 @@ export function ConfirmDialog({ open, onOpenChange, trigger, title, description,
     <Dialog open={isOpen} onOpenChange={setOpen}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent title={title} className="w-[min(92vw,26rem)]">
-        <div className="-mt-1 flex items-start gap-4">
-          <Pebble status={tone === "danger" ? "waiting_approval" : "thinking"} color={tone === "danger" ? "peach" : "lilac"} size={64} halo className="shrink-0" />
-          <div className="min-w-0 pt-1 text-sm leading-relaxed text-ink-soft">
-            {description}
-            {children}
-          </div>
+        <div className="text-sm leading-relaxed text-fg-2">
+          {description}
+          {children}
         </div>
         <DialogFooter>
           <DialogClose asChild>
@@ -118,4 +109,3 @@ export function ConfirmDialog({ open, onOpenChange, trigger, title, description,
     </Dialog>
   );
 }
-

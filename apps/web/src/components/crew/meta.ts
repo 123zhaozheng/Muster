@@ -1,7 +1,6 @@
 // 团队页共用的常量与纯函数：颜色/形状、成员类型、工具分组、人设模板、模型选项编码。
-import type { Bot, BotColor, BotKind, DetectedAgent, ModelInfo, ModelRef, NativeToolGroup, PebbleShape, Task } from "@muster/protocol";
+import type { Bot, BotColor, DetectedAgent, ModelInfo, ModelRef, NativeToolGroup, PebbleShape, Task } from "@muster/protocol";
 import { MAIN_BOT_ID } from "@muster/protocol";
-import type { ChipTone } from "@muster/ui";
 
 export const COLORS: { value: BotColor; label: string }[] = [
   { value: "cream", label: "奶油" },
@@ -9,8 +8,6 @@ export const COLORS: { value: BotColor; label: string }[] = [
   { value: "peach", label: "蜜桃" },
   { value: "sky", label: "天空" },
   { value: "lilac", label: "丁香" },
-  { value: "rose", label: "玫瑰" },
-  { value: "butter", label: "奶黄" },
 ];
 export const SHAPES: { value: PebbleShape; label: string }[] = [
   { value: "round", label: "圆圆" },
@@ -19,9 +16,6 @@ export const SHAPES: { value: PebbleShape; label: string }[] = [
   { value: "egg", label: "蛋蛋" },
   { value: "flat", label: "扁扁" },
 ];
-
-/** 每种颜色的“同色系”标签色。 */
-export const SKILL_TONE: Record<BotColor, ChipTone> = { cream: "coral", peach: "coral", rose: "coral", mint: "mint", sky: "sky", lilac: "lavender", butter: "amber" };
 
 /** Detected engine -> bot kind accepted by `bot.add`. */
 export const ENGINE_META: Record<DetectedAgent["engine"], { kind: "codex" | "claude" | "acp"; label: string; install: string }> = {
@@ -37,9 +31,6 @@ export function withStandardAgents(agents: DetectedAgent[]): DetectedAgent[] {
   const missing = STANDARD_ENGINES.filter((e) => !agents.some((a) => a.engine === e)).map((e): DetectedAgent => ({ engine: e, command: e, found: false }));
   return [...agents, ...missing];
 }
-
-export const KIND_LABEL: Record<BotKind, string> = { main: "主 Bot", codex: "Codex", claude: "Claude", acp: "ACP", native: "原生" };
-export const KIND_TONE: Record<BotKind, ChipTone> = { main: "coral", codex: "mint", claude: "amber", acp: "sky", native: "lavender" };
 
 export const isMainBot = (bot: Pick<Bot, "id" | "kind">): boolean => bot.id === MAIN_BOT_ID || bot.kind === "main";
 /** Pip 和原生成员有“模型”概念；外部编程 Agent 的模型由其自身管理。 */
@@ -108,6 +99,22 @@ export function modelHint(m: ModelInfo): string {
   if (m.reasoning) parts.push("推理");
   if (m.vision) parts.push("视觉");
   return parts.join(" · ");
+}
+
+/** The one-line specialty under a member's name: the tagline, else the label of a native member. */
+export function specialty(bot: Pick<Bot, "kind" | "tagline" | "engineLabel">): string | undefined {
+  return bot.tagline ?? (bot.kind === "native" ? bot.engineLabel : undefined);
+}
+
+/** The small tag next to the specialty: native members show their model, external agents their engine. */
+export function modelTag(bot: Pick<Bot, "kind" | "engineLabel" | "model">): string {
+  return hasModel(bot) ? (bot.model?.modelId ?? "默认模型") : bot.engineLabel;
+}
+
+/** First sentence of the persona; external agents get a plain description of the engine. */
+export function intro(bot: Pick<Bot, "kind" | "persona" | "engineLabel">): string {
+  if (bot.persona) return bot.persona.split(/(?<=[。！？.!?])\s*/)[0]!.trim();
+  return bot.kind === "native" ? "还没有写人设" : `接入本机的 ${bot.engineLabel} 编程 Agent`;
 }
 
 /** Most recently started task of a bot, if any. */

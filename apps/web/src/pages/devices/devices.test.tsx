@@ -8,33 +8,44 @@ import DevicesPage from "./index";
 afterEach(cleanup);
 
 describe("DevicesPage", () => {
-  it("renders header, overview stats and device cards with online state and last-seen time", () => {
+  const rows = () => screen.getAllByTestId("device-row");
+  const rowOf = (name: string) => rows().find((r) => within(r).queryByText(name))!;
+
+  it("lists devices on the left with real online state and shows the local one in the detail", () => {
     setupHub();
     render(<DevicesPage />);
     expect(screen.getByRole("heading", { name: "设备" })).toBeTruthy();
-    expect(screen.getByText("设备总数")).toBeTruthy();
-    expect(screen.getByText("在线设备")).toBeTruthy();
-    expect(screen.getByText("离线设备")).toBeTruthy();
-    const cards = screen.getAllByTestId("device-card");
-    expect(cards).toHaveLength(fixtureDevices.length);
-    expect(within(cards[0]!).getByText("MacBook Pro · 本机")).toBeTruthy();
-    expect(within(cards[0]!).getByText("本机")).toBeTruthy();
-    expect(within(cards[0]!).getByText("当前正在使用的设备")).toBeTruthy();
-    const cloud = cards.find((c) => within(c).queryByText("云服务器"))!;
-    expect(within(cloud).getByText("离线")).toBeTruthy();
-    expect(within(cloud).getByText(/最后在线/)).toBeTruthy();
-    expect(screen.getAllByText("在线")).toHaveLength(2);
+    expect(rows()).toHaveLength(fixtureDevices.length);
+    expect(within(rows()[0]!).getByText("MacBook Pro · 本机")).toBeTruthy();
+    expect(rows()[0]!.getAttribute("aria-current")).toBe("true");
+    expect(within(rowOf("云服务器")).getByText("离线")).toBeTruthy();
+    expect(rows().filter((r) => within(r).queryByText(/^在线/))).toHaveLength(2);
+    const detail = screen.getByTestId("device-detail");
+    expect(within(detail).getByRole("heading", { name: "MacBook Pro · 本机" })).toBeTruthy();
+    expect(within(detail).getByText("当前正在使用")).toBeTruthy();
+    expect(within(detail).getByText("macOS · 本机")).toBeTruthy();
   });
 
-  it("tags devices with the rules that watch them", () => {
+  it("selecting an offline device shows its real last-seen time", () => {
     setupHub();
     render(<DevicesPage />);
-    const desktop = screen.getAllByTestId("device-card").find((c) => within(c).queryByText("书房台式机"))!;
-    expect(within(desktop).getByText("1 条规则监听")).toBeTruthy(); // fixture rule tr-device watches dev-desktop
-    expect(within(desktop).getByText("可接收任务")).toBeTruthy();
+    fireEvent.click(rowOf("云服务器"));
+    expect(rowOf("云服务器").getAttribute("aria-current")).toBe("true");
+    const detail = screen.getByTestId("device-detail");
+    expect(within(detail).getByRole("heading", { name: "云服务器" })).toBeTruthy();
+    expect(within(detail).getByText("离线")).toBeTruthy();
+    expect(within(detail).getByText(/^2 天前（\d{4}-\d\d-\d\d \d\d:\d\d:\d\d）$/)).toBeTruthy();
   });
 
-  it("shows the pairing steps up front, then a code with countdown ring and the stub notice", async () => {
+  it("shows how many schedules watch the selected device", () => {
+    setupHub();
+    render(<DevicesPage />);
+    expect(within(screen.getByTestId("device-detail")).getByText("没有日程监听这台设备")).toBeTruthy();
+    fireEvent.click(rowOf("书房台式机"));
+    expect(within(screen.getByTestId("device-detail")).getByText("1 条日程在监听这台设备")).toBeTruthy(); // fixture rule tr-device watches dev-desktop
+  });
+
+  it("shows the pairing steps up front, then a code with countdown and the stub notice", async () => {
     const request = setupHub({ "device.pairCode": () => ({ code: "482913", expiresAt: new Date(Date.now() + 300_000).toISOString() }) });
     render(<DevicesPage />);
     expect(screen.getByText("当前版本仅显示配对码，跨机配对即将推出")).toBeTruthy();
@@ -64,14 +75,16 @@ describe("DevicesPage", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("daemon 不可用");
   });
 
-  it("renders the remote browser preview with disabled controls", () => {
+  it("shows the remote browser as not connected, with connection steps and no fake session", () => {
     setupHub();
     render(<DevicesPage />);
-    expect(screen.getByText("即将推出")).toBeTruthy();
-    expect(screen.getByText("远程浏览器即将推出：让小探在你的电脑上操作网页，你可随时接管")).toBeTruthy();
-    expect(screen.getByLabelText("地址栏")).toBeTruthy();
-    for (const t of ["实时画面", "随时接管", "敏感操作需确认"]) expect(screen.getByText(t)).toBeTruthy();
-    for (const name of ["接管", "暂停", "结束"]) expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    const detail = screen.getByTestId("device-detail");
+    expect(within(detail).getByText("远程浏览器")).toBeTruthy();
+    expect(within(detail).getByText("未接入")).toBeTruthy();
+    expect(within(detail).getByText("在设备上启用远程浏览器")).toBeTruthy();
+    expect(within(detail).queryByText(/操作中/)).toBeNull();
+    expect(screen.queryByLabelText("地址栏")).toBeNull();
+    for (const name of ["接管", "暂停", "结束"]) expect(screen.queryByRole("button", { name })).toBeNull();
   });
 
   it("shows an empty state without devices", () => {
@@ -79,6 +92,7 @@ describe("DevicesPage", () => {
     useHub.setState((s) => ({ model: { ...s.model, devices: {} } }));
     render(<DevicesPage />);
     expect(screen.getByText("还没有设备")).toBeTruthy();
-    expect(screen.queryAllByTestId("device-card")).toHaveLength(0);
+    expect(screen.queryAllByTestId("device-row")).toHaveLength(0);
+    expect(screen.queryByTestId("device-detail")).toBeNull();
   });
 });

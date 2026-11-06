@@ -129,6 +129,8 @@ export interface DecideArgs {
   text: string;
   /** 流式文字（普通文本与 reply 工具的 text 都会走这里）。 */
   onDelta(delta: string): void;
+  /** 流式思考（推理模型的 thinking），在界面上折叠展示。 */
+  onThinking?(delta: string): void;
   signal?: AbortSignal;
 }
 
@@ -150,6 +152,8 @@ export async function decideByModel(a: DecideArgs): Promise<ModelDecision> {
   for await (const ev of stream) {
     if (ev.type === "text_delta") {
       a.onDelta(ev.delta);
+    } else if (ev.type === "thinking_delta") {
+      a.onThinking?.(ev.delta);
     } else if (ev.type === "toolcall_delta") {
       const block = ev.partial.content[ev.contentIndex];
       if (block?.type === "toolCall" && block.name === "reply") {

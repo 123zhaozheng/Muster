@@ -32,18 +32,18 @@ export function TagInput({ value, onChange, placeholder, invalid, id, "aria-labe
   return (
     <div
       className={cn(
-        "flex min-h-10 flex-wrap items-center gap-1.5 rounded-2xl border border-line bg-surface px-2.5 py-1.5 transition-[border-color,box-shadow] duration-200 focus-within:border-coral focus-within:ring-4 focus-within:ring-coral/15",
+        "flex min-h-9 flex-wrap items-center gap-1.5 rounded-control border border-border bg-surface px-2 py-1 transition-colors duration-150 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20",
         invalid && "border-danger",
       )}
     >
       {value.map((t) => (
-        <span key={t} className="inline-flex items-center gap-1 rounded-pill bg-coral-soft py-0.5 pl-2.5 pr-1 font-mono text-xs text-coral-deep">
+        <span key={t} className="inline-flex items-center gap-1 rounded-control bg-accent-surface py-0.5 pl-2 pr-1 font-mono text-xs text-accent">
           {t}
           <button
             type="button"
             aria-label={`移除 ${t}`}
             onClick={() => onChange(value.filter((x) => x !== t))}
-            className="grid size-4 cursor-pointer place-items-center rounded-full hover:bg-coral/20"
+            className="grid size-4 cursor-pointer place-items-center rounded-control hover:bg-accent/20"
           >
             <X className="size-3" />
           </button>
@@ -65,7 +65,7 @@ export function TagInput({ value, onChange, placeholder, invalid, id, "aria-labe
           }
         }}
         placeholder={value.length === 0 ? placeholder : "继续添加…"}
-        className="h-7 min-w-32 flex-1 bg-transparent px-1 font-mono text-[13px] text-ink outline-none placeholder:font-sans placeholder:text-ink-faint"
+        className="h-7 min-w-32 flex-1 bg-transparent px-1 font-mono text-[13px] text-fg outline-none placeholder:font-sans placeholder:text-fg-3"
       />
     </div>
   );

@@ -1,5 +1,6 @@
 // 工作台的纯函数：快捷键映射、文案、diff 解析、从 entries 汇总数据。无 React 依赖，便于测试。
-import type { BotStatus, DiffFile, Entry, Task, ToolItem } from "@muster/protocol";
+import type { Approval, BotStatus, DiffFile, Entry, Task, ToolItem } from "@muster/protocol";
+import type { Tone } from "@muster/ui";
 
 export type SendMode = "normal" | "steer" | "queue" | "interrupt";
 
@@ -8,7 +9,7 @@ export function isBusy(task: Pick<Task, "status"> | undefined): boolean {
   return task?.status === "running" || task?.status === "waiting_approval";
 }
 
-export interface KeyLike {
+interface KeyLike {
   key: string;
   altKey?: boolean;
   ctrlKey?: boolean;
@@ -16,6 +17,8 @@ export interface KeyLike {
   shiftKey?: boolean;
   /** 输入法组字中，Enter 用于确认候选词，不能发送。 */
   isComposing?: boolean;
+  /** 部分浏览器（Safari）确认候选词的那次 keydown isComposing 已为 false，但 keyCode 仍是 229。 */
+  keyCode?: number;
 }
 
 /**
@@ -24,7 +27,7 @@ export interface KeyLike {
  *   空闲：Enter / Alt+Enter / Ctrl+Enter 都是普通发送
  */
 export function resolveSendMode(e: KeyLike, busy: boolean): SendMode | null {
-  if (e.key !== "Enter" || e.isComposing || e.shiftKey) return null;
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || e.shiftKey) return null;
   if (!busy) return "normal";
   if (e.ctrlKey || e.metaKey) return "interrupt";
   if (e.altKey) return "queue";
@@ -149,15 +152,7 @@ export function collectCommands(entries: Entry[]): ToolItem[] {
   return out;
 }
 
-export function lastTestResult(entries: Entry[]): { passed: number; failed: number } | undefined {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i];
-    if (e?.kind === "test_result") return { passed: e.passed, failed: e.failed };
-  }
-  return undefined;
-}
-
-// ───────────── phase 2：工作台 v2 的纯函数 ─────────────
+// ───────────── 用时、模型、文件树、里程碑 ─────────────
 
 /** 毫秒 -> "42 秒" / "12 分钟" / "1 小时 05 分"。 */
 export function formatDuration(ms: number): string {
@@ -175,10 +170,6 @@ export function taskElapsedMs(task: Pick<Task, "startedAt" | "finishedAt" | "sta
   if (Number.isNaN(start)) return undefined;
   const end = task.finishedAt ? Date.parse(task.finishedAt) : now;
   return Number.isNaN(end) ? undefined : Math.max(0, end - start);
-}
-
-export function formatUsd(n: number | undefined): string {
-  return n === undefined ? "—" : `$${n.toFixed(2)}`;
 }
 
 /** "deepseek / deepseek-chat"；没有配置时返回 undefined（界面显示“默认模型”）。 */
@@ -230,15 +221,86 @@ export function buildFileTree(files: DiffFile[]): FileTreeNode[] {
   return finish(root.children);
 }
 
-/** 工具名 -> 图标族（EntryView 用）。 */
-export function toolKind(tool: string): "read" | "command" | "edit" | "search" | "web" | "other" {
+export type ToolKind = "read" | "command" | "edit" | "search" | "web" | "other";
+
+/** 工具名 -> 图标族（工具调用行用）。 */
+export function toolKind(tool: string): ToolKind {
   const t = tool.toLowerCase();
   if (COMMAND_TOOLS.has(t)) return "command";
   if (["read", "cat", "ls", "list", "view", "open"].includes(t)) return "read";
   if (["edit", "write", "patch", "apply_patch", "create", "replace"].includes(t)) return "edit";
   if (["grep", "search", "find", "glob", "rg"].includes(t)) return "search";
-  if (["web", "fetch", "http", "browse"].includes(t)) return "web";
+  if (["web", "fetch", "http", "browse", "web_search", "web_fetch"].includes(t)) return "web";
   return "other";
+}
+
+const KIND_VERB: Record<Exclude<ToolKind, "other">, string> = { read: "读取", command: "运行", edit: "编辑", search: "搜索", web: "访问" };
+
+/** Pip 的管家工具（docs/14 §1.2）与常见别名的白话动词。 */
+const NAMED_VERB: Record<string, string> = {
+  web_search: "搜索网页",
+  route: "安排工单",
+  dispatch: "派发",
+  say: "回复",
+  ask_user: "询问你",
+  ticket_note: "补充工单",
+  ticket_retry: "重试工单",
+  attempt_add: "加一个方案",
+  schedule: "建日程",
+  memory_search: "查记忆",
+  memory_propose: "提议记忆",
+};
+
+/** 工具名 -> 白话动作：“运行”“读取”“编辑”“搜索”…；不认识的工具写“调用 <工具名>”。 */
+export function toolAction(tool: string): string {
+  const named = NAMED_VERB[tool.toLowerCase()];
+  if (named) return named;
+  const kind = toolKind(tool);
+  return kind === "other" ? `调用 ${tool}` : KIND_VERB[kind];
+}
+
+interface Milestone {
+  id: string;
+  ts: string;
+  text: string;
+  tone: Tone;
+  /** 对话里对应的条目，用于从里程碑跳回那一步。 */
+  entryId: string;
+}
+
+const APPROVAL_STATE: Record<Approval["status"], { label: string; tone: Tone }> = {
+  pending: { label: "待确认", tone: "warning" },
+  allowed: { label: "已允许", tone: "success" },
+  denied: { label: "已拒绝", tone: "danger" },
+  expired: { label: "已过期", tone: "neutral" },
+};
+
+/** 真实发生过的节点：改动、测试结果、确认请求、你的插话/打断。没有就是空——不补伪进度。 */
+export function buildMilestones(entries: Entry[], approvals: Record<string, Pick<Approval, "title" | "status"> | undefined>): Milestone[] {
+  const out: Milestone[] = [];
+  for (const e of entries) {
+    const base = { id: e.id, ts: e.ts, entryId: e.id };
+    switch (e.kind) {
+      case "diff":
+        out.push({ ...base, text: `修改了 ${e.files.length} 个文件`, tone: "neutral" });
+        break;
+      case "test_result":
+        out.push({ ...base, text: `测试${e.failed === 0 ? "全部通过" : "未通过"} · ${e.passed} 通过 · ${e.failed} 失败`, tone: e.failed === 0 ? "success" : "danger" });
+        break;
+      case "approval": {
+        const a = approvals[e.approvalId];
+        const state = a ? APPROVAL_STATE[a.status] : undefined;
+        out.push({ ...base, text: `请求确认${a ? `：${a.title}` : ""}${state ? ` · ${state.label}` : ""}`, tone: state?.tone ?? "neutral" });
+        break;
+      }
+      case "steer":
+        out.push({ ...base, text: `${steerLabel(e)}：${e.text.replace(/\s+/g, " ").trim()}`, tone: "neutral" });
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
 }
 
 /** 时间线节点悬停摘要：一句话说明这一步做了什么。 */
@@ -247,6 +309,7 @@ export function entrySummary(e: Entry): string {
     case "user":
     case "steer":
     case "bot":
+    case "thinking":
     case "system": {
       const t = e.text.replace(/\s+/g, " ").trim();
       return t.length > 60 ? `${t.slice(0, 60)}…` : t;

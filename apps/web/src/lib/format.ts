@@ -1,4 +1,4 @@
-// OWNER: W1. 相对时间文案（"刚刚 / 3 分钟前 / 2 小时前 / 昨天 / 5 天前"）。
+// 相对时间文案（"刚刚 / 3 分钟前 / 2 小时前 / 昨天 / 5 天前"）。
 export function relativeTime(iso: string | undefined, nowMs: number = Date.now()): string {
   if (!iso) return "";
   const diff = Math.max(0, nowMs - Date.parse(iso));
@@ -10,3 +10,4 @@ export function relativeTime(iso: string | undefined, nowMs: number = Date.now()
   const day = Math.floor(hour / 24);
   return day === 1 ? "昨天" : `${day} 天前`;
 }
+export const usd = (n: number | undefined): string => (n === undefined ? "—" : n > 0 && n < 0.01 ? "<$0.01" : `$${n.toFixed(2)}`);

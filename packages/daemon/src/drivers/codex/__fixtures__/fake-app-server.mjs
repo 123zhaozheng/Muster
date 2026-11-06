@@ -71,6 +71,20 @@ async function runTurn(threadId, turnId, text) {
     note("item/completed", { ...t, item: { type: "fileChange", id: `${itemBase}_3`, status: "completed", changes: [{ path: "x.ts", kind: { type: "update", move_path: null }, diff: "@@\n-a\n+b\n" }] } });
     return completeTurn("completed");
   }
+  if (text.includes("reason")) {
+    const r1 = { type: "reasoning", id: `${itemBase}_r1`, summary: [], content: [] };
+    note("item/started", { ...t, item: r1 });
+    note("item/reasoning/summaryTextDelta", { ...t, itemId: r1.id, delta: "先读", summaryIndex: 0 });
+    note("item/reasoning/summaryTextDelta", { ...t, itemId: r1.id, delta: "代码", summaryIndex: 0 });
+    note("item/reasoning/textDelta", { ...t, itemId: r1.id, delta: "原文不重复", contentIndex: 0 });
+    note("item/reasoning/summaryPartAdded", { ...t, itemId: r1.id, summaryIndex: 1 });
+    note("item/reasoning/summaryTextDelta", { ...t, itemId: r1.id, delta: "再改", summaryIndex: 1 });
+    note("item/completed", { ...t, item: { ...r1, summary: ["先读代码", "再改"] } });
+    note("item/completed", { ...t, item: { type: "reasoning", id: `${itemBase}_r2`, summary: ["整段推理"], content: [] } });
+    note("item/completed", { ...t, item: { type: "reasoning", id: `${itemBase}_r3`, summary: [], content: [] } });
+    note("item/completed", { ...t, item: { type: "agentMessage", id: `${itemBase}_m`, text: "好了" } });
+    return completeTurn("completed");
+  }
   if (text.includes("nodelta")) {
     note("item/completed", { ...t, item: { type: "agentMessage", id: `${itemBase}_m`, text: "整段回复" } });
     return completeTurn("completed");

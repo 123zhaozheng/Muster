@@ -28,7 +28,7 @@ describe("highlightLine", () => {
   });
 });
 
-describe("工作台 v2 纯函数", () => {
+describe("工单详情纯函数", () => {
   it("formatDuration / taskElapsedMs", () => {
     expect(formatDuration(42_000)).toBe("42 秒");
     expect(formatDuration(12 * 60_000)).toBe("12 分钟");

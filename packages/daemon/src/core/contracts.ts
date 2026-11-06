@@ -47,6 +47,9 @@ export type DriverEvent =
   | { t: "turn_start"; turn: number } // 1-based, increases per user turn
   | { t: "text_delta"; delta: string }
   | { t: "text_done" } // current assistant message finished
+  /** Model reasoning (Claude thinking / Codex reasoning summary / pi thinking). Any other event ends the block. */
+  | { t: "thinking_delta"; delta: string }
+  | { t: "thinking_done" } // current reasoning block finished
   | { t: "tool"; tool: string; kind: "read" | "command" | "edit" | "other"; label: string; ok?: boolean; output?: string }
   | { t: "diff"; files: DiffFile[] }
   | { t: "tests"; passed: number; failed: number }

@@ -1,0 +1,19 @@
+/* Desktop (Electron) window-controls overlay: the global strip becomes the drag region and leaves room for the system buttons.
+   In a browser env(titlebar-area-*) fall back to 0 / 100vw, so the strip collapses to nothing. */
+header[data-topbar] {
+  -webkit-app-region: drag;
+  min-height: env(titlebar-area-height, 0px);
+  padding-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+}
+header[data-topbar] :is(a, button, input, textarea, select, [role="button"], [tabindex]) {
+  -webkit-app-region: no-drag;
+}
+
+/* Drag-resized sidebar width (Shell SidebarSlot). Unlayered, so it wins over the Sidebar's own w-[224px] utility; the 68px rail is untouched.
+   While dragging the width follows the pointer directly, without the collapse transition. */
+[data-sidebar-slot] > aside[data-collapsed="false"] {
+  width: var(--sidebar-w, 224px);
+}
+[data-sidebar-slot][data-resizing] > aside {
+  transition: none;
+}

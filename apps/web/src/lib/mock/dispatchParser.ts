@@ -1,7 +1,7 @@
 // Mock 版 Pip 的"分发"规则：从一句话里识别 Bot 名与对应任务标题（真实后端由路由器模型完成）。
 import type { Bot } from "@muster/protocol";
 
-export interface DispatchIntent {
+interface DispatchIntent {
   bot: Bot;
   title: string;
 }

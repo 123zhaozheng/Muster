@@ -88,6 +88,22 @@ describe("codex driver (fake app-server)", () => {
     ]);
   });
 
+  it("推理：摘要增量 -> thinking_delta（分段补空行，原文不重复），未流式的补发全文，空推理不出现", async () => {
+    const s = await start("reason");
+    const evs = await reader(s).untilTurnEnd();
+    expect(evs.filter((e) => e.t !== "turn_start")).toEqual([
+      { t: "thinking_delta", delta: "先读" },
+      { t: "thinking_delta", delta: "代码" },
+      { t: "thinking_delta", delta: "\n\n再改" },
+      { t: "thinking_done" },
+      { t: "thinking_delta", delta: "整段推理" },
+      { t: "thinking_done" },
+      { t: "text_delta", delta: "好了" },
+      { t: "text_done" },
+      { t: "turn_end", status: "completed" },
+    ]);
+  });
+
   it("工具事件：读 / 命令 / 文件改动与 diff", async () => {
     const s = await start("tools");
     const evs = await reader(s).untilTurnEnd();

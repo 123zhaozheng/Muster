@@ -1,4 +1,4 @@
-// OWNER: U2. 快捷键相关的小工具。
+// 快捷键相关的小工具。
 
 export const isMac = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent || "");
 

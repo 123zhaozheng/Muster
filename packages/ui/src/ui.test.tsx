@@ -3,16 +3,15 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BotStatus, PebbleShape } from "@muster/protocol";
 import {
-  AnimatedNumber, AvatarGroup, AvatarStack, Badge, Button, Card, Chip, Combobox, CommandPalette, ConfirmDialog, CountBadge, DescriptionList, Dialog,
-  DialogContent, DialogTrigger, Dot, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Empty, EmptyState, Field, IconButton,
-  Input, Kbd, PageHeader, Pebble, ProgressBar, Pulse, ScrollArea, Section, SectionTitle, Segmented, Select, Sheet, SheetContent, Skeleton, Slider,
-  STATUS_LABEL, StatCard, StatusPill, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, toast, Toaster, Tooltip, UiGallery,
+  Badge, Button, Combobox, ConfirmDialog, CountBadge, DescriptionList, Dot, Drawer, DrawerContent, EmptyState, IconButton, Pebble, Section,
+  SettingsRow, Select, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, toast, Toaster, setReduceMotion, useReducedMotion,
 } from "./index";
+import { DialogTrigger } from "./overlays";
 
 const STATUSES: BotStatus[] = ["idle", "thinking", "working", "waiting_approval", "done", "error", "sleeping"];
 const SHAPES: PebbleShape[] = ["round", "square", "blob", "egg", "flat"];
 
-function mockReducedMotion(reduce: boolean) {
+function mockSystemReducedMotion(reduce: boolean) {
   vi.stubGlobal("matchMedia", (q: string) => ({
     matches: reduce && q.includes("reduce"),
     media: q,
@@ -22,7 +21,6 @@ function mockReducedMotion(reduce: boolean) {
 }
 
 beforeAll(() => {
-  // Radix ScrollArea / Tooltip / Select / cmdk observe sizes and scroll; jsdom has none of that.
   globalThis.ResizeObserver ??= class {
     observe() {}
     unobserve() {}
@@ -33,193 +31,217 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  setReduceMotion(false);
   toast.dismiss();
 });
 
 describe("Pebble", () => {
-  it("每种 status 的 aria-label、动画 class 与结构都不同", () => {
-    const labels = new Set<string>();
-    const classes = new Set<string>();
-    const structures = new Set<string>();
-    for (const status of STATUSES) {
-      const { container, unmount } = render(<Pebble status={status} />);
+  it("每种 status 的结构不同（不靠动画区分），有 title 才暴露为图片", () => {
+    const html = STATUSES.map((status) => {
+      const { container, unmount } = render(<Pebble status={status} title={`状态-${status}`} />);
       const svg = container.querySelector("svg")!;
-      labels.add(svg.getAttribute("aria-label")!);
-      expect(svg.getAttribute("aria-label")).toBe(STATUS_LABEL[status]);
       expect(svg.getAttribute("data-status")).toBe(status);
-      expect(svg.getAttribute("class")).toContain(`pebble-anim-${status}`);
-      classes.add(svg.getAttribute("class")!);
-      // 去掉随机 id 后比较内部结构
-      structures.add(svg.innerHTML.replace(/(id="|url\(#)[^")]*/g, "$1ID"));
+      expect(svg.getAttribute("aria-label")).toBe(`状态-${status}`);
+      const markup = svg.innerHTML;
       unmount();
-    }
-    expect(labels.size).toBe(STATUSES.length);
-    expect(classes.size).toBe(STATUSES.length);
-    expect(structures.size).toBe(STATUSES.length);
+      return markup;
+    });
+    expect(new Set(html).size).toBe(STATUSES.length);
+    const { container } = render(<Pebble />);
+    expect(container.querySelector("svg")!.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("5 种形状输出不同的 path，尺寸与 title 生效", () => {
-    const bodies = new Set<string>();
-    for (const shape of SHAPES) {
-      const { container, unmount } = render(<Pebble shape={shape} size={160} title="小码" />);
+  it("5 种形状输出不同的轮廓，尺寸生效", () => {
+    const paths = SHAPES.map((shape) => {
+      const { container, unmount } = render(<Pebble shape={shape} size={72} />);
       const svg = container.querySelector("svg")!;
-      expect(svg.getAttribute("width")).toBe("160");
-      expect(svg.getAttribute("aria-label")).toBe("小码");
-      bodies.add(svg.querySelector('path[fill="var(--color-pebble-cream)"]')?.getAttribute("d") ?? shape);
+      expect(svg.getAttribute("width")).toBe("72");
+      const d = svg.querySelectorAll("path")[4]?.getAttribute("d") ?? svg.innerHTML;
       unmount();
-    }
-    expect(bodies.size).toBe(SHAPES.length);
+      return d;
+    });
+    expect(new Set(paths).size).toBe(SHAPES.length);
   });
 
-  it("animated=false 时不带动画 class 也没有交互", () => {
-    const { container } = render(<Pebble status="working" animated={false} />);
-    const cls = container.querySelector("svg")!.getAttribute("class")!;
-    expect(cls).not.toContain("pebble-anim-");
-    expect(cls).not.toContain("pebble-interactive");
-    expect(container.querySelector("svg")!.getAttribute("data-motion")).toBe("still");
-  });
-
-  it("prefers-reduced-motion 下没有任何动画类", () => {
-    mockReducedMotion(true);
-    for (const status of STATUSES) {
-      const { container, unmount } = render(<Pebble status={status} halo />);
-      const svg = container.querySelector("svg")!;
-      expect(svg.getAttribute("class")).not.toContain("pebble-anim-");
-      expect(svg.getAttribute("class")).not.toContain("pebble-interactive");
-      expect(svg.getAttribute("data-motion")).toBe("still");
-      unmount();
-    }
-  });
-
-  it("lite 只保留降级动画，halo / mood / interactive 开关生效", () => {
-    const lite = render(<Pebble lite status="working" />).container.querySelector("svg")!;
-    expect(lite.getAttribute("class")).toContain("pebble-lite");
-    expect(lite.getAttribute("class")).not.toContain("pebble-interactive");
-    expect(lite.getAttribute("data-motion")).toBe("lite");
+  it("系统或应用内“减少动态效果”任一开启时完全静止", () => {
+    const { container } = render(<Pebble status="working" />);
+    expect(container.querySelector("svg")!.getAttribute("data-motion")).toBe("live");
     cleanup();
 
-    const full = render(<Pebble status="idle" halo mood="lively" />).container.querySelector("svg")!;
-    expect(full.getAttribute("class")).toContain("pebble-interactive");
-    expect(full.querySelector(".pebble-halo")).not.toBeNull();
-    expect(full.style.getPropertyValue("--pb-k")).toBe("1.5");
+    mockSystemReducedMotion(true);
+    const sys = render(<Pebble status="working" />);
+    expect(sys.container.querySelector("svg")!.getAttribute("data-motion")).toBe("still");
+    expect(sys.container.querySelector(".pebble-live")).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+
+    act(() => setReduceMotion(true));
+    const app = render(<Pebble status="working" />);
+    expect(app.container.querySelector("svg")!.getAttribute("data-motion")).toBe("still");
+    expect(app.container.querySelector(".pebble-live, .pebble-interactive")).toBeNull();
     cleanup();
 
-    const noInteract = render(<Pebble interactive={false} />).container.querySelector("svg")!;
-    expect(noInteract.getAttribute("class")).not.toContain("pebble-interactive");
-    expect(noInteract.querySelector(".pebble-halo")).toBeNull();
+    const off = render(<Pebble status="working" animated={false} />);
+    expect(off.container.querySelector("svg")!.getAttribute("data-motion")).toBe("still");
   });
 
-  it("hover 时眼睛跟随鼠标，点击触发 onClick", () => {
-    const onClick = vi.fn();
-    const { container } = render(<Pebble size={100} onClick={onClick} />);
+  it("默认是活的：每种状态都有自己的小动画挂点，悬停/点击可互动", () => {
+    const { container } = render(<Pebble status="idle" />);
     const svg = container.querySelector("svg")!;
-    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} });
-    fireEvent.pointerMove(svg, { clientX: 100, clientY: 55 });
-    expect(Number(svg.style.getPropertyValue("--ex"))).toBeGreaterThan(3);
-    fireEvent.pointerLeave(svg);
-    expect(svg.style.getPropertyValue("--ex")).toBe("0");
-    fireEvent.click(svg);
-    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(svg.classList.contains("pebble-live")).toBe(true);
+    expect(svg.classList.contains("pebble-interactive")).toBe(true);
+    for (const cls of ["pebble-body", "pebble-sprout", "pebble-blink", "pebble-glance", "pebble-look"]) expect(svg.querySelector(`.${cls}`)).not.toBeNull();
+    cleanup();
+
+    const hooks: Partial<Record<BotStatus, string>> = {
+      thinking: ".pebble-dot-c",
+      working: ".pebble-ticks",
+      waiting_approval: ".pebble-ring",
+      done: ".pebble-cheer",
+      error: ".pebble-alert",
+      sleeping: ".pebble-zzz-b",
+    };
+    for (const [status, sel] of Object.entries(hooks)) {
+      const r = render(<Pebble status={status as BotStatus} />);
+      expect(r.container.querySelector(sel)).not.toBeNull();
+      r.unmount();
+    }
   });
 
-  it("30 个同屏 lite 头像可渲染", () => {
-    const { container } = render(
-      <div>
-        {Array.from({ length: 30 }, (_, i) => (
-          <Pebble key={i} lite size={24} status={STATUSES[i % 7]} />
-        ))}
-      </div>,
-    );
-    expect(container.querySelectorAll("svg.pebble-lite").length).toBe(30);
+  it("点击：活的时候跳一下并回调；减少动态效果时只回调不动", () => {
+    const animate = vi.fn();
+    const proto = SVGElement.prototype as unknown as { animate?: unknown };
+    const original = proto.animate;
+    proto.animate = animate;
+    try {
+      const onClick = vi.fn();
+      const live = render(<Pebble onClick={onClick} title="Pip" />);
+      fireEvent.click(screen.getByRole("img", { name: "Pip" }));
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(animate).toHaveBeenCalledTimes(1);
+      live.unmount();
+
+      act(() => setReduceMotion(true));
+      render(<Pebble onClick={onClick} title="Pip" />);
+      fireEvent.click(screen.getByRole("img", { name: "Pip" }));
+      expect(onClick).toHaveBeenCalledTimes(2);
+      expect(animate).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("img", { name: "Pip" }).classList.contains("pebble-interactive")).toBe(false);
+    } finally {
+      if (original) proto.animate = original;
+      else delete proto.animate;
+    }
   });
 });
 
-describe("components render", () => {
-  it("基础组件", () => {
-    render(
-      <div>
-        <Button>按钮</Button>
-        <Button loading>加载</Button>
-        <Card>卡片</Card>
-        <Chip>标签</Chip>
-        <StatusPill status="working" />
-        <Segmented value="a" onChange={() => {}} options={[{ value: "a", label: "甲" }]} />
-        <Input placeholder="输入" />
-        <Textarea placeholder="多行" />
-        <Switch aria-label="开关" defaultChecked />
-        <Slider value={30} onValueChange={() => {}} aria-label="滑块" />
-        <ProgressBar value={50} label="进度" />
-        <Kbd>Esc</Kbd>
-        <SectionTitle title="标题" subtitle="副标题" action={<Button>操作</Button>} />
-        <EmptyState title="空空如也" description="说明" />
-        <AvatarGroup bots={[{ id: "a" }, { id: "b" }, { id: "c" }]} max={2} />
-        <ScrollArea className="h-10">内容</ScrollArea>
-      </div>,
-    );
-    expect(screen.getByText("卡片")).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "开关" }).getAttribute("data-state")).toBe("checked");
-    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("50");
-    expect(screen.getByText("+1")).toBeTruthy();
-    expect(screen.getByText("空空如也")).toBeTruthy();
-    expect(screen.getByText("加载").closest("button")!.hasAttribute("disabled")).toBe(true);
-  });
-
-  it("v2 展示组件", () => {
+describe("Dot / StatusBadge 脉冲", () => {
+  it("pulse 时有 ping 环；系统或应用内减少动态效果时没有", () => {
     const { container } = render(
       <div>
-        <PageHeader title="团队" subtitle="你的 AI 团队" actions={<Button>添加</Button>} pebble={{ status: "idle" }} />
-        <Section title="区块" description="区块说明" actions={<Button>更多</Button>} card>
-          内容
-        </Section>
-        <StatCard label="任务" value={42} trend={{ value: 5 }} sparkline={[1, 3, 2, 5]} />
-        <StatCard label="花费" value={3.5} decimals={2} prefix="$" trend={{ value: 8, inverse: true }} />
-        <Empty title="没有数据" description="去创建" action={<Button>创建</Button>} />
-        <Skeleton className="h-4 w-10" />
-        <AvatarStack items={[{ id: "a", name: "小码" }, { id: "b" }, { id: "c" }]} max={2} />
-        <Badge tone="coral" variant="outline" dot>徽标</Badge>
-        <CountBadge count={120} />
-        <CountBadge count={0} />
-        <Dot tone="mint" />
-        <Pulse status="working" />
-        <DescriptionList items={[{ label: "模型", value: "gpt-5", mono: true }, { label: "状态", value: "在线" }]} />
-        <DescriptionList layout="rows" items={[{ label: "区域", value: "cn" }]} />
-        <Field label="名称" error="必填"><Input aria-invalid /></Field>
+        <Dot tone="accent" pulse data-testid="dot" />
+        <StatusBadge tone="accent" pulse>执行中</StatusBadge>
       </div>,
     );
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("团队");
-    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("区块");
-    expect(screen.getByLabelText("42").textContent).toBe("42");
-    expect(screen.getByLabelText("$3.50")).toBeTruthy();
-    expect(screen.getByText("99+")).toBeTruthy();
-    expect(container.querySelectorAll(".muster-count-pop").length).toBe(1);
-    expect(screen.getByText("+1")).toBeTruthy();
-    expect(screen.getByText("gpt-5")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent).toBe("必填");
-    expect(container.querySelectorAll(".muster-skeleton").length).toBe(1);
+    expect(screen.getByTestId("dot").classList.contains("muster-ping")).toBe(true);
+    expect(container.querySelectorAll(".muster-ping")).toHaveLength(2);
+    cleanup();
+
+    render(<Dot tone="accent" data-testid="dot" />);
+    expect(screen.getByTestId("dot").classList.contains("muster-ping")).toBe(false);
+    cleanup();
+
+    act(() => setReduceMotion(true));
+    const app = render(<Dot tone="accent" pulse />);
+    expect(app.container.querySelector(".muster-ping")).toBeNull();
+    cleanup();
+    act(() => setReduceMotion(false));
+
+    mockSystemReducedMotion(true);
+    const sys = render(<StatusBadge tone="accent" pulse>执行中</StatusBadge>);
+    expect(sys.container.querySelector(".muster-ping")).toBeNull();
+  });
+});
+
+describe("减少动态效果偏好", () => {
+  function Probe() {
+    return <span data-testid="flag">{String(useReducedMotion())}</span>;
+  }
+  it("setReduceMotion 写入 localStorage 与 html 属性，并驱动 useReducedMotion", () => {
+    render(<Probe />);
+    expect(screen.getByTestId("flag").textContent).toBe("false");
+    act(() => setReduceMotion(true));
+    expect(screen.getByTestId("flag").textContent).toBe("true");
+    expect(localStorage.getItem("muster.reduceMotion")).toBe("1");
+    expect(document.documentElement.dataset.reduceMotion).toBe("true");
+    act(() => setReduceMotion(false));
+    expect(screen.getByTestId("flag").textContent).toBe("false");
+    expect(document.documentElement.dataset.reduceMotion).toBe("false");
+  });
+  it("与系统偏好取或", () => {
+    mockSystemReducedMotion(true);
+    render(<Probe />);
+    expect(screen.getByTestId("flag").textContent).toBe("true");
+  });
+});
+
+describe("基础组件", () => {
+  it("Button：点击触发，loading 时禁用并标记 busy", () => {
+    const onClick = vi.fn();
+    const { rerender } = render(<Button onClick={onClick}>保存</Button>);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    rerender(<Button loading onClick={onClick}>保存</Button>);
+    const busy = screen.getByRole("button", { name: "保存" }) as HTMLButtonElement;
+    expect(busy.disabled).toBe(true);
+    expect(busy.getAttribute("aria-busy")).toBe("true");
   });
 
-  it("IconButton 有可访问名称", () => {
-    render(<IconButton label="设置" tooltip={false}>⚙</IconButton>);
-    expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
+  it("IconButton 以 label 作为可访问名称", () => {
+    const onClick = vi.fn();
+    render(<IconButton label="关闭面板" onClick={onClick}><span>x</span></IconButton>);
+    fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
+    expect(onClick).toHaveBeenCalled();
   });
 
-  it("AnimatedNumber：reduced motion 下直接显示最终值，否则 aria-label 恒为最终值", () => {
-    mockReducedMotion(true);
-    const a = render(<AnimatedNumber value={1234.5} decimals={1} />);
-    expect(a.container.textContent).toBe("1,234.5");
-    a.unmount();
-    mockReducedMotion(false);
-    const b = render(<AnimatedNumber value={80} suffix="%" />);
-    expect(b.container.querySelector("span")!.getAttribute("aria-label")).toBe("80%");
+  it("Badge / StatusBadge 显示文字；CountBadge 为 0 时不渲染，超上限显示 max+", () => {
+    render(
+      <div>
+        <Badge tone="accent">Codex</Badge>
+        <StatusBadge tone="warning">等你确认</StatusBadge>
+        <CountBadge count={0} data-testid="zero" />
+        <CountBadge count={120} data-testid="many" />
+      </div>,
+    );
+    expect(screen.getByText("Codex")).toBeTruthy();
+    expect(screen.getByText("等你确认")).toBeTruthy();
+    expect(screen.queryByTestId("zero")).toBeNull();
+    expect(screen.getByTestId("many").textContent).toBe("99+");
   });
 
-  it("ProgressBar 不确定态没有 aria-valuenow，流光 class 随进度出现", () => {
-    const { container, rerender } = render(<ProgressBar value={40} />);
-    expect(container.querySelector(".muster-progress-shine")).not.toBeNull();
-    rerender(<ProgressBar value={100} />);
-    expect(container.querySelector(".muster-progress-shine")).toBeNull();
-    rerender(<ProgressBar value={0} indeterminate label="x" />);
-    expect(screen.getByRole("progressbar").hasAttribute("aria-valuenow")).toBe(false);
+  it("EmptyState：标题、说明与唯一操作", () => {
+    render(<EmptyState title="还没有成员" description="添加后会出现在这里" action={<Button>添加</Button>} />);
+    expect(screen.getByText("还没有成员")).toBeTruthy();
+    expect(screen.getByText("添加后会出现在这里")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "添加" })).toBeTruthy();
+  });
+
+  it("Section / SettingsRow / DescriptionList 渲染内容", () => {
+    render(
+      <Section title="通用" description="说明" card>
+        <SettingsRow label="语言" description="界面语言"><span>简体中文</span></SettingsRow>
+        <DescriptionList layout="rows" items={[{ label: "版本", value: "0.0.1" }]} />
+      </Section>,
+    );
+    expect(screen.getByRole("heading", { name: "通用" })).toBeTruthy();
+    expect(screen.getByText("界面语言")).toBeTruthy();
+    expect(screen.getByText("0.0.1")).toBeTruthy();
+  });
+
+  it("Textarea 受控输入并转发 onChange", () => {
+    const onChange = vi.fn();
+    render(<Textarea autoGrow aria-label="内容" value="你好" onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("内容"), { target: { value: "你好呀" } });
+    expect(onChange).toHaveBeenCalled();
   });
 
   it("Tabs 默认显示对应内容", () => {
@@ -236,38 +258,26 @@ describe("components render", () => {
     expect(screen.getByText("乙内容")).toBeTruthy();
     expect(screen.queryByText("甲内容")).toBeNull();
   });
+});
 
-  it("浮层触发器可渲染", () => {
+describe("浮层", () => {
+  it("Drawer：打开后显示标题、内容与底部；Esc 关闭并把焦点还给触发器", async () => {
     render(
-      <div>
-        <Tooltip content="提示" shortcut="Ctrl+B"><Button>悬停</Button></Tooltip>
-        <Dialog>
-          <DialogTrigger asChild><Button>开窗</Button></DialogTrigger>
-          <DialogContent title="标题" description="描述">体</DialogContent>
-        </Dialog>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button>菜单</Button></DropdownMenuTrigger>
-          <DropdownMenuContent><DropdownMenuItem>项</DropdownMenuItem></DropdownMenuContent>
-        </DropdownMenu>
-      </div>,
+      <Drawer>
+        <DialogTrigger asChild><Button>打开</Button></DialogTrigger>
+        <DrawerContent title="成员详情" description="说明" footer={<Button>保存</Button>}>抽屉内容</DrawerContent>
+      </Drawer>,
     );
-    expect(screen.getByText("悬停")).toBeTruthy();
-    expect(screen.getByText("开窗")).toBeTruthy();
-    expect(screen.getByText("菜单")).toBeTruthy();
-  });
-
-  it("Sheet 打开后显示标题、内容与底部操作", () => {
-    render(
-      <Sheet defaultOpen>
-        <SheetContent title="成员详情" description="说明" footer={<Button>保存</Button>}>
-          抽屉内容
-        </SheetContent>
-      </Sheet>,
-    );
-    expect(screen.getByRole("dialog")).toBeTruthy();
+    const trigger = screen.getByRole("button", { name: "打开" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(screen.getByText("成员详情")).toBeTruthy();
     expect(screen.getByText("抽屉内容")).toBeTruthy();
-    expect(screen.getByText("保存")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "保存" })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("ConfirmDialog：确认后调用 onConfirm 并关闭", async () => {
@@ -298,31 +308,12 @@ describe("components render", () => {
     const input = await screen.findByPlaceholderText("搜索…");
     expect(screen.getByText("claude")).toBeTruthy();
     fireEvent.change(input, { target: { value: "my-model" } });
-    const custom = await screen.findByText("my-model");
-    fireEvent.click(custom);
+    fireEvent.click(await screen.findByText("my-model"));
     expect(onChange).toHaveBeenCalledWith("my-model");
   });
+});
 
-  it("CommandPalette 列出分组项并在选中后触发 onSelect", async () => {
-    const onSelect = vi.fn();
-    const onOpenChange = vi.fn();
-    render(
-      <CommandPalette
-        open
-        onOpenChange={onOpenChange}
-        items={[
-          { id: "home", label: "主线", group: "页面", onSelect },
-          { id: "bot", label: "小码", group: "成员", pebble: { status: "working" }, onSelect: () => {} },
-        ]}
-      />,
-    );
-    expect(screen.getByText("页面")).toBeTruthy();
-    expect(screen.getByText("成员")).toBeTruthy();
-    fireEvent.click(screen.getByText("主线"));
-    expect(onSelect).toHaveBeenCalled();
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
+describe("Toast", () => {
   it("toast() 显示并可 dismiss；error 使用 alert 角色", async () => {
     render(<Toaster />);
     act(() => {
@@ -348,10 +339,5 @@ describe("components render", () => {
     });
     await waitFor(() => expect(screen.getByText("好了")).toBeTruthy());
     expect(screen.queryByText("保存中")).toBeNull();
-  });
-
-  it("UiGallery 渲染 35 个矩阵吉祥物", () => {
-    const { container } = render(<UiGallery />);
-    expect(container.querySelectorAll("table svg[data-status]").length).toBe(35);
   });
 });

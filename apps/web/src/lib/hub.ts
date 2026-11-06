@@ -1,4 +1,4 @@
-// OWNER: W1 (shell + data layer). Contract below is FROZEN; internals can be improved.
+// Shell data layer. Contract below is FROZEN; internals can be improved.
 //
 //   useHub(selector)        zustand hook over the shared HubModel (same reducer as the daemon)
 //   useEntries(threadId)    entries of a thread (triggers a one-time thread.get load)

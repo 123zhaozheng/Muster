@@ -1,15 +1,22 @@
-// OWNER: U2. 侧栏状态：展开/收起（持久化）、窄屏自动收起、最近对话折叠。
+// Sidebar state: collapsed/expanded (persisted), automatic collapse on narrow screens, mobile drawer, recent-chats expansion.
 //
-//   collapsed = override ?? (窄屏 ? true : pref)
-//   - pref      用户在宽屏下的选择，存 localStorage（muster.sidebar.collapsed）
-//   - narrow    视口 < 1200px（matchMedia）
-//   - override  窄屏下用户临时展开/收起；视口跨过 1200px 阈值时清除
+//   collapsed = mobile ? false : override ?? (narrow ? true : pref)
+//   - pref     the user's choice on wide screens, localStorage muster.sidebar.collapsed
+//   - narrow   viewport < 1100px: collapsed to the 68px rail unless the user opens it temporarily (override)
+//   - mobile   viewport < 768px: the sidebar becomes a left drawer (drawerOpen)
+// Expanded width is drag-resizable in Shell (SIDEBAR_WIDTH, persisted in muster.sidebar.width); the rail stays 68px.
 import { create } from "zustand";
 
 export const SIDEBAR_KEY = "muster.sidebar.collapsed";
-export const RECENT_KEY = "muster.sidebar.recent";
-/** 窄于该宽度（px）自动收起。 */
-export const NARROW_PX = 1200;
+const RECENT_KEY = "muster.sidebar.recent";
+/** Expanded sidebar width (px): persisted key, default and drag range. */
+export const SIDEBAR_WIDTH = { storageKey: "muster.sidebar.width", defaultWidth: 224, min: 200, max: 360 } as const;
+/** Releasing a sidebar drag narrower than this (px) snaps it to the rail. */
+export const SIDEBAR_SNAP_PX = 140;
+/** Narrower than this (px): auto-collapse to the rail. */
+const NARROW_PX = 1100;
+/** Narrower than this (px): navigation lives in a drawer. */
+const MOBILE_PX = 768;
 
 function read(key: string): string | null {
   try {
@@ -22,56 +29,69 @@ function write(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* 隐私模式等：忽略，仅内存生效 */
+    /* private mode: in-memory only */
   }
 }
 
 interface SidebarState {
   pref: boolean;
   narrow: boolean;
+  mobile: boolean;
   override: boolean | null;
-  recentOpen: boolean;
+  drawerOpen: boolean;
+  /** Recent chats: false = first 4, true = more. */
+  recentExpanded: boolean;
   toggle: () => void;
-  setNarrow: (narrow: boolean) => void;
+  setViewport: (v: { narrow: boolean; mobile: boolean }) => void;
+  setDrawerOpen: (open: boolean) => void;
   toggleRecent: () => void;
 }
 
-export const collapsedOf = (s: Pick<SidebarState, "pref" | "narrow" | "override">): boolean => s.override ?? (s.narrow ? true : s.pref);
+const collapsedOf = (s: Pick<SidebarState, "pref" | "narrow" | "mobile" | "override">): boolean => !s.mobile && (s.override ?? (s.narrow ? true : s.pref));
 
 export const useSidebar = create<SidebarState>((set, get) => ({
   pref: read(SIDEBAR_KEY) === "1",
   narrow: false,
+  mobile: false,
   override: null,
-  recentOpen: read(RECENT_KEY) !== "0",
+  drawerOpen: false,
+  recentExpanded: read(RECENT_KEY) === "1",
   toggle: () => {
     const s = get();
+    if (s.mobile) return set({ drawerOpen: !s.drawerOpen });
     const next = !collapsedOf(s);
-    if (s.narrow) {
-      set({ override: next });
-    } else {
+    if (s.narrow) set({ override: next });
+    else {
       write(SIDEBAR_KEY, next ? "1" : "0");
       set({ pref: next, override: null });
     }
   },
-  setNarrow: (narrow) => {
-    if (narrow !== get().narrow) set({ narrow, override: null });
+  setViewport: ({ narrow, mobile }) => {
+    const s = get();
+    if (narrow !== s.narrow || mobile !== s.mobile) set({ narrow, mobile, override: null, drawerOpen: false });
   },
+  setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
   toggleRecent: () => {
-    const next = !get().recentOpen;
+    const next = !get().recentExpanded;
     write(RECENT_KEY, next ? "1" : "0");
-    set({ recentOpen: next });
+    set({ recentExpanded: next });
   },
 }));
 
-/** 当前是否收起。 */
+/** Whether the rail (68px) is shown. Always false in the mobile drawer. */
 export const useCollapsed = (): boolean => useSidebar(collapsedOf);
 
-/** 跟踪视口宽度，窄于 1200px 时自动收起。在 Shell 里调用一次。无 matchMedia 的环境（jsdom）视为宽屏。 */
+/** Track the viewport width. Call once in Shell. Environments without matchMedia (jsdom) count as wide. */
 export function watchViewport(): () => void {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => undefined;
-  const mq = window.matchMedia(`(max-width: ${NARROW_PX - 0.02}px)`);
-  const apply = () => useSidebar.getState().setNarrow(mq.matches);
+  const narrow = window.matchMedia(`(max-width: ${NARROW_PX - 0.02}px)`);
+  const mobile = window.matchMedia(`(max-width: ${MOBILE_PX - 0.02}px)`);
+  const apply = () => useSidebar.getState().setViewport({ narrow: narrow.matches, mobile: mobile.matches });
   apply();
-  mq.addEventListener("change", apply);
-  return () => mq.removeEventListener("change", apply);
+  narrow.addEventListener("change", apply);
+  mobile.addEventListener("change", apply);
+  return () => {
+    narrow.removeEventListener("change", apply);
+    mobile.removeEventListener("change", apply);
+  };
 }

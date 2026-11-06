@@ -26,7 +26,7 @@ sync(useHub.getState().model.serverTime);
 useHub.subscribe((s) => sync(s.model.serverTime));
 
 /** 以 daemon 的时钟为准的当前时间戳（ms）。 */
-export function serverNow(): number {
+function serverNow(): number {
   return Date.now() + offset;
 }
 

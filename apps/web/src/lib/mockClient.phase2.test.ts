@@ -1,4 +1,4 @@
-// 二期：成员增改删、模型目录 / provider / 列表 / 测试 / 默认模型、任务进度平滑推进。
+// 二期：成员增改删、模型目录 / provider / 列表 / 测试 / 默认模型；任务进度只在完成时给 100。
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WirePush } from "@muster/protocol";
 import { applyPush, modelFromSnapshot } from "@muster/protocol/reducer";
@@ -9,6 +9,7 @@ let pushes: WirePush[];
 const run = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 const kinds = () => pushes.map((p) => p.push.kind);
 const DEEPSEEK = { provider: "deepseek", modelId: "deepseek-flash" };
+const QWEN = { provider: "qwen-token-plan-cn", modelId: "qwen3-max" };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -33,21 +34,28 @@ describe("演示数据", () => {
     const snap = await c.request("hub.snapshot", {});
     expect(snap.modelSettings).toEqual({ router: DEEPSEEK, native: DEEPSEEK });
     const { providers, settings } = await c.request("model.providers", {});
-    expect(providers).toHaveLength(1);
+    expect(providers.map((p) => p.id)).toEqual(["deepseek", "qwen-token-plan-cn"]);
     expect(providers[0]).toMatchObject({ id: "deepseek", kind: "builtin", builtinId: "deepseek", hasApiKey: true, enabled: true });
+    expect(providers[1]).toMatchObject({ id: "qwen-token-plan-cn", kind: "builtin", hasApiKey: true, enabled: true });
     expect(settings).toEqual({ router: DEEPSEEK, native: DEEPSEEK });
     expect(JSON.stringify({ snap, providers })).not.toMatch(/sk-demo/);
     expect(providers[0]).not.toHaveProperty("apiKey");
   });
 
-  it("有原生自建成员「小译」（persona / tools / model 完整），内置成员带 builtin 标记", async () => {
+  it("原生成员小探（DeepSeek）与小文（Qwen）带人设 / 技能 / 工具 / 模型，且都指向已配置的 provider", async () => {
     const { bots } = await c.request("hub.snapshot", {});
-    const xy = bots.find((b) => b.name === "小译");
-    expect(xy).toMatchObject({ kind: "native", model: DEEPSEEK, builtin: false });
-    expect(xy?.persona).toBeTruthy();
-    expect(xy?.tools).toEqual(["files", "web"]);
+    const { providers } = await c.request("model.providers", {});
+    const tan = bots.find((b) => b.id === "bot-xiaotan");
+    const wen = bots.find((b) => b.id === "bot-xiaowen");
+    expect(tan).toMatchObject({ kind: "native", name: "小探", model: { provider: "deepseek" }, tools: ["files", "web"] });
+    expect(wen).toMatchObject({ kind: "native", name: "小文", model: QWEN, tools: ["files", "edit"] });
+    for (const b of [tan, wen]) {
+      expect(b?.persona).toBeTruthy();
+      expect(b?.skills.length).toBeGreaterThan(0);
+      expect(providers.some((p) => p.id === b?.model?.provider)).toBe(true);
+    }
+    expect(bots.filter((b) => b.kind !== "main")).toHaveLength(4);
     for (const id of ["bot-pip", "bot-xiaotan", "bot-xiaowen"]) expect(bots.find((b) => b.id === id)?.builtin).toBe(true);
-    expect(bots.find((b) => b.id === "bot-xiaotan")?.persona).toBeTruthy();
     // 一期的 Codex / Claude 成员不受影响
     expect(bots.find((b) => b.id === "bot-xiaoma")?.kind).toBe("codex");
   });
@@ -84,7 +92,7 @@ describe("model.providerUpsert / providerDelete", () => {
     expect(keep.provider).toMatchObject({ hasApiKey: true, name: "月之暗面", createdAt: provider.createdAt });
     const cleared = await c.request("model.providerUpsert", { provider: { kind: "builtin", builtinId: "moonshotai-cn", name: "", enabled: true }, apiKey: "" });
     expect(cleared.provider.hasApiKey).toBe(false);
-    expect((await c.request("model.providers", {})).providers.map((p) => p.id)).toEqual(["deepseek", "moonshotai-cn"]);
+    expect((await c.request("model.providers", {})).providers.map((p) => p.id)).toEqual(["deepseek", "qwen-token-plan-cn", "moonshotai-cn"]);
   });
 
   it("自定义 OpenAI 兼容 provider：生成 custom-xxxx id，需要名称 / 网址 / 至少一个模型", async () => {
@@ -113,10 +121,10 @@ describe("model.providerUpsert / providerDelete", () => {
 
   it("删除 provider：清掉指向它的默认模型与成员模型，推送 models.changed / bot.updated；未知 id not_found", async () => {
     await c.request("model.providerDelete", { providerId: "deepseek" });
-    expect((await c.request("model.providers", {})).providers).toEqual([]);
+    expect((await c.request("model.providers", {})).providers.map((p) => p.id)).toEqual(["qwen-token-plan-cn"]);
     expect(c.getModel().modelSettings).toEqual({});
-    expect(c.getModel().bots["bot-xiaoyi"]?.model).toBeUndefined();
-    expect(c.getModel().bots["bot-xiaowen"]?.model).toBeUndefined();
+    expect(c.getModel().bots["bot-xiaotan"]?.model).toBeUndefined();
+    expect(c.getModel().bots["bot-xiaowen"]?.model).toEqual(QWEN);
     expect(kinds()).toContain("bot.updated");
     expect(pushes.at(-1)?.push).toEqual({ kind: "models.changed", settings: {} });
     await expect(c.request("model.providerDelete", { providerId: "deepseek" })).rejects.toThrow(/not_found/);
@@ -210,7 +218,7 @@ describe("model.settingsSet", () => {
     const snap = await c.request("hub.snapshot", {});
     await c.request("model.providerUpsert", { provider: { kind: "builtin", builtinId: "openai", name: "", enabled: true }, apiKey: "k" });
     await c.request("model.settingsSet", { settings: { native: { provider: "openai", modelId: "gpt-4.1" } } });
-    await c.request("bot.update", { botId: "bot-xiaoyi", patch: { model: { provider: "openai", modelId: "gpt-4.1-mini" }, tagline: "新签名" } });
+    await c.request("bot.update", { botId: "bot-xiaowen", patch: { model: { provider: "openai", modelId: "gpt-4.1-mini" }, tagline: "新签名" } });
     await c.request("model.providerDelete", { providerId: "deepseek" });
     let replay = modelFromSnapshot(snap);
     pushes.forEach((p, i) => {
@@ -245,28 +253,28 @@ describe("bot.add / bot.update / bot.remove", () => {
     expect(bot.persona).toBeUndefined();
     await expect(c.request("bot.add", { name: "甲", kind: "native", model: { provider: "nope", modelId: "x" } })).rejects.toThrow(/bad_request/);
     await expect(c.request("bot.add", { name: "乙", kind: "native", tools: ["rm" as never] })).rejects.toThrow(/tools/);
-    await expect(c.request("bot.add", { name: "小译", kind: "native" })).rejects.toThrow(/conflict/);
+    await expect(c.request("bot.add", { name: "小文", kind: "native" })).rejects.toThrow(/conflict/);
     // 一期流程不变：外部引擎成员不带 tools
     expect((await c.request("bot.add", { name: "丙", kind: "claude" })).bot.tools).toBeUndefined();
   });
 
   it("bot.update：改字段、清空可选字段、重名 conflict、未知 not_found，并推送 bot.updated", async () => {
     const { bot } = await c.request("bot.update", {
-      botId: "bot-xiaoyi",
-      patch: { name: "小译译", tagline: "新的签名", persona: "新人设", tools: ["files", "edit"], color: "sky", shape: "egg", skills: ["a"] },
+      botId: "bot-xiaowen",
+      patch: { name: "小文文", tagline: "新的签名", persona: "新人设", tools: ["files", "edit"], color: "sky", shape: "egg", skills: ["a"] },
     });
-    expect(bot).toMatchObject({ name: "小译译", tagline: "新的签名", persona: "新人设", tools: ["files", "edit"], color: "sky", shape: "egg", skills: ["a"], kind: "native", id: "bot-xiaoyi" });
+    expect(bot).toMatchObject({ name: "小文文", tagline: "新的签名", persona: "新人设", tools: ["files", "edit"], color: "sky", shape: "egg", skills: ["a"], kind: "native", id: "bot-xiaowen" });
     expect(pushes.at(-1)?.push).toEqual({ kind: "bot.updated", bot });
 
-    const cleared = (await c.request("bot.update", { botId: "bot-xiaoyi", patch: { model: undefined, persona: "", tagline: undefined } })).bot;
+    const cleared = (await c.request("bot.update", { botId: "bot-xiaowen", patch: { model: undefined, persona: "", tagline: undefined } })).bot;
     expect(cleared).not.toHaveProperty("model");
     expect(cleared).not.toHaveProperty("persona");
     expect(cleared).not.toHaveProperty("tagline");
-    expect(c.getModel().bots["bot-xiaoyi"]).toEqual(cleared);
+    expect(c.getModel().bots["bot-xiaowen"]).toEqual(cleared);
 
-    await expect(c.request("bot.update", { botId: "bot-xiaoyi", patch: { name: "小码" } })).rejects.toThrow(/conflict/);
-    await expect(c.request("bot.update", { botId: "bot-xiaoyi", patch: { name: "  " } })).rejects.toThrow(/bad_request/);
-    await expect(c.request("bot.update", { botId: "bot-xiaoyi", patch: { model: { provider: "nope", modelId: "x" } } })).rejects.toThrow(/bad_request/);
+    await expect(c.request("bot.update", { botId: "bot-xiaowen", patch: { name: "小码" } })).rejects.toThrow(/conflict/);
+    await expect(c.request("bot.update", { botId: "bot-xiaowen", patch: { name: "  " } })).rejects.toThrow(/bad_request/);
+    await expect(c.request("bot.update", { botId: "bot-xiaowen", patch: { model: { provider: "nope", modelId: "x" } } })).rejects.toThrow(/bad_request/);
     await expect(c.request("bot.update", { botId: "nope", patch: { name: "x" } })).rejects.toThrow(/not_found/);
     // 内置成员可以编辑，不动状态等字段
     const pip = (await c.request("bot.update", { botId: "bot-pip", patch: { tagline: "路由" } })).bot;
@@ -281,58 +289,42 @@ describe("bot.add / bot.update / bot.remove", () => {
     await expect(c.request("bot.remove", { botId: bot.id })).rejects.toThrow(/not_found/);
     await expect(c.request("bot.remove", { botId: "bot-pip" })).rejects.toThrow(/bad_request/);
     await expect(c.request("bot.remove", { botId: "bot-xiaotan" })).rejects.toThrow(/内置/);
-    await expect(c.request("bot.remove", { botId: "bot-xiaoma" })).rejects.toThrow(/conflict/); // 夹具里正在跑任务
+    await expect(c.request("bot.remove", { botId: "bot-ake" })).rejects.toThrow(/conflict/); // 还有等你确认的任务
   });
 
-  it("原生成员可以被主线派发任务", async () => {
-    await c.request("chat.send", { threadId: "thread-main", text: "交给小译翻译这份 README" });
-    await run(2000);
-    const task = Object.values(c.getModel().tasks).find((t) => t.botId === "bot-xiaoyi");
-    expect(task?.title).toContain("翻译");
+  it("原生成员可以被主线派发任务：不需要审批，只检索整理，不产生 diff / 测试", async () => {
+    await c.request("chat.send", { threadId: "thread-main", text: "交给小文写一份会议纪要" });
+    await run(3000);
+    const task = Object.values(c.getModel().tasks).find((t) => t.botId === "bot-xiaowen" && t.title.includes("会议纪要"));
+    expect(task?.status).toBe("done");
+    expect(task?.cwd).toBeUndefined();
+    expect(Object.values(c.getModel().approvals).some((a) => a.taskId === task?.id)).toBe(false);
+    const kinds = (c.getModel().entries[task!.threadId] ?? []).map((e) => e.kind);
+    expect(kinds).not.toContain("diff");
+    expect(kinds).not.toContain("test_result");
   });
 
   it("原生成员没有可用模型时，在自己的线程里给出「去配置模型」的引导", async () => {
-    await c.request("bot.update", { botId: "bot-xiaoyi", patch: { model: undefined } });
     await c.request("model.providerDelete", { providerId: "deepseek" });
-    await c.request("chat.send", { threadId: "thread-bot-xiaoyi", text: "你好" });
+    await c.request("chat.send", { threadId: "thread-bot-xiaotan", text: "你好" });
     await run(500);
-    const last = c.getModel().entries["thread-bot-xiaoyi"]?.findLast((e) => e.kind === "bot");
+    const last = c.getModel().entries["thread-bot-xiaotan"]?.findLast((e) => e.kind === "bot");
     expect(last && last.kind === "bot" && last.text).toMatch(/设置 · 模型/);
   });
 });
 
-describe("任务进度平滑推进", () => {
-  it("运行中的任务每 600ms 上涨 3~8%，最高停在 94%，不到 100", async () => {
-    c.close();
-    c = createMockClient({ stepMs: 1_000_000, typeMs: 1, scanMs: 0 });
-    const id = "task-fix-callback";
-    const seen: number[] = [c.getModel().tasks[id]!.progress!];
-    for (let i = 0; i < 12; i++) {
-      await run(600);
-      seen.push(c.getModel().tasks[id]!.progress!);
+describe("任务进度", () => {
+  it("运行中的任务不报百分比，只有完成时给 100；完成后再发消息重新开始时清掉 100", async () => {
+    const id = "task-hiring-research";
+    for (let i = 0; i < 40 && c.getModel().tasks[id]?.status === "running"; i++) {
+      expect(c.getModel().tasks[id]?.progress).toBeUndefined();
+      await run(50);
     }
-    for (let i = 1; i < seen.length; i++) {
-      const d = seen[i]! - seen[i - 1]!;
-      if (seen[i - 1]! < 94) {
-        expect(d).toBeGreaterThanOrEqual(Math.min(3, 94 - seen[i - 1]!));
-        expect(d).toBeLessThanOrEqual(8);
-      } else {
-        expect(d).toBe(0);
-      }
-    }
-    expect(seen.at(-1)).toBe(94);
-  });
+    expect(c.getModel().tasks[id]).toMatchObject({ status: "done", progress: 100 });
+    expect(kinds().filter((k) => k === "task.updated").length).toBeGreaterThan(0);
 
-  it("等待审批的任务进度不动；progressMs=0 可关闭", async () => {
-    const waiting = "task-refund-api";
-    const before = c.getModel().tasks[waiting]!.progress;
-    await run(3000);
-    expect(c.getModel().tasks[waiting]!.progress).toBe(before);
-
-    c.close();
-    c = createMockClient({ stepMs: 1_000_000, typeMs: 1, scanMs: 0, progressMs: 0 });
-    const p0 = c.getModel().tasks["task-fix-callback"]!.progress;
-    await run(5000);
-    expect(c.getModel().tasks["task-fix-callback"]!.progress).toBe(p0);
+    await c.request("chat.send", { threadId: "thread-hiring-research", text: "再补充一下薪资区间" });
+    expect(c.getModel().tasks[id]?.status).toBe("running");
+    expect(c.getModel().tasks[id]?.progress).toBeUndefined();
   });
 });

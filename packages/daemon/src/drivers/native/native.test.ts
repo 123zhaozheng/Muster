@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxThinking, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DriverEvent, DriverSession } from "../../core/contracts";
 import { createNativeDriver, type NativeDriver } from "./index";
@@ -98,6 +98,19 @@ describe("一轮对话", () => {
     expect(text).toBe("你好，我是小探，这是一段需要分块输出的较长回答。");
     expect(events.at(-1)).toMatchObject({ t: "turn_end", status: "completed" });
     expect(session.caps).toMatchObject({ steer: true, fork: true, interrupt: true });
+  });
+
+  it("思考块产出 thinking_delta，正文开始前 thinking_done，且不混进正文", async () => {
+    const { open } = setup([fauxAssistantMessage([fauxThinking("先确认用户想问什么，再组织回答。"), fauxText("这是回答。")])]);
+    const session = await open().start({ cwd: dir, prompt: "你好" });
+    const { events, waitFor } = collect(session);
+    await waitFor((e) => e.t === "turn_end");
+
+    const thinking = events.flatMap((e) => (e.t === "thinking_delta" ? [e.delta] : [])).join("");
+    expect(thinking).toBe("先确认用户想问什么，再组织回答。");
+    expect(events.flatMap((e) => (e.t === "text_delta" ? [e.delta] : [])).join("")).toBe("这是回答。");
+    const order = kinds(events).filter((t, i, a) => t !== a[i - 1]);
+    expect(order).toEqual(["turn_start", "thinking_delta", "thinking_done", "text_delta", "text_done", "turn_end"]);
   });
 
   it("工具调用产出 tool 事件，且文本不重复", async () => {

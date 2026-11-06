@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModelInfo, ModelProviderConfig, ModelSettings, ProviderCatalogEntry } from "@muster/protocol";
 import { hubRequest, useHub } from "../../lib/hub";
 
-export interface ModelData {
+interface ModelData {
   phase: "loading" | "ready" | "error";
   error?: string;
   catalog: ProviderCatalogEntry[];

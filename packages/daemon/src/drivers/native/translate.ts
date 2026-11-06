@@ -31,6 +31,9 @@ export class ViewTranslator {
   active: boolean;
   #lastId: number;
   #emitted = "";
+  /** 当前这条回复里已发出的思考文本；#thinkingOpen 表示还没发 thinking_done。 */
+  #thinking = "";
+  #thinkingOpen = false;
   #tokens = 0;
   #costUsd = 0;
   readonly #calls = new Map<string, { name: string; args: Record<string, unknown> }>();
@@ -51,7 +54,7 @@ export class ViewTranslator {
     const live = liveOf(view);
     if (this.active && live.run === undefined) this.#endTurn(view, events);
     else if (live.run !== undefined && live.generation?.message) {
-      this.#textDelta(textOf(live.generation.message.content), events);
+      this.#stream(live.generation.message.content, events);
     }
     return events;
   }
@@ -77,9 +80,11 @@ export class ViewTranslator {
 
   #assistant(message: AssistantMessage, events: DriverEvent[]): void {
     const text = textOf(message.content);
-    this.#textDelta(text, events);
+    this.#stream(message.content, events);
+    this.#closeThinking(events);
     if (text) events.push({ t: "text_done" });
     this.#emitted = "";
+    this.#thinking = "";
     this.#tokens += message.usage?.totalTokens ?? 0;
     this.#costUsd += message.usage?.cost?.total ?? 0;
     for (const block of message.content) {
@@ -101,6 +106,27 @@ export class ViewTranslator {
     });
   }
 
+  /** 思考在前、正文在后：正文一开始就收起思考块。 */
+  #stream(content: AssistantMessage["content"], events: DriverEvent[]): void {
+    this.#thinkingDelta(thinkingOf(content), events);
+    const text = textOf(content);
+    if (text.length > this.#emitted.length) this.#closeThinking(events);
+    this.#textDelta(text, events);
+  }
+
+  #thinkingDelta(full: string, events: DriverEvent[]): void {
+    if (full.length <= this.#thinking.length || !full.startsWith(this.#thinking)) return;
+    events.push({ t: "thinking_delta", delta: full.slice(this.#thinking.length) });
+    this.#thinking = full;
+    this.#thinkingOpen = true;
+  }
+
+  #closeThinking(events: DriverEvent[]): void {
+    if (!this.#thinkingOpen) return;
+    events.push({ t: "thinking_done" });
+    this.#thinkingOpen = false;
+  }
+
   #textDelta(full: string, events: DriverEvent[]): void {
     // 重试后流式文本会从头开始；与已发出内容不连续时不再补发，避免重复。
     if (full.length <= this.#emitted.length || !full.startsWith(this.#emitted)) return;
@@ -109,6 +135,8 @@ export class ViewTranslator {
   }
 
   #endTurn(view: ConversationView, events: DriverEvent[]): void {
+    this.#closeThinking(events);
+    this.#thinking = "";
     const failure = liveOf(view).runFailure;
     const usage = { tokens: this.#tokens, costUsd: this.#costUsd };
     if (failure === undefined) events.push({ t: "turn_end", status: "completed", usage });
@@ -136,6 +164,15 @@ function liveOf(view: ConversationView): LiveDoc {
 export function textOf(content: string | readonly { type: string; text?: string }[]): string {
   if (typeof content === "string") return content;
   return content.map((b) => (b.type === "text" ? (b.text ?? "") : "")).join("");
+}
+
+/** 拼接内容里的思考块（被安全策略隐去的不展示）。 */
+export function thinkingOf(content: string | readonly { type: string; thinking?: string; redacted?: boolean }[]): string {
+  if (typeof content === "string") return "";
+  return content
+    .map((b) => (b.type === "thinking" && !b.redacted ? (b.thinking ?? "") : ""))
+    .filter((t) => t.trim())
+    .join("\n\n");
 }
 
 function toolKind(name: string): "read" | "command" | "edit" | "other" {

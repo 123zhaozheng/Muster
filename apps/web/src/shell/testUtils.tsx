@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { emptyModel } from "@muster/protocol/reducer";
 import { attachClient, useHub } from "../lib/hub";
 import { createMockClient } from "../lib/mockClient";
-import { useCommandPalette } from "./CommandPalette";
+import { useCommandSearch } from "./CommandSearch";
 import { Shell } from "./Shell";
 import { useSidebar } from "./sidebarState";
 
@@ -23,8 +23,8 @@ export function stubBrowser(): void {
 
 export function resetShellState(): void {
   localStorage.clear();
-  useSidebar.setState({ pref: false, narrow: false, override: null, recentOpen: true });
-  useCommandPalette.setState({ open: false });
+  useSidebar.setState({ pref: false, narrow: false, mobile: false, override: null, drawerOpen: false, recentExpanded: false });
+  useCommandSearch.setState({ open: false });
   useHub.setState({ model: emptyModel(), status: "connecting", client: null, mock: false, loadedThreads: {} });
 }
 
@@ -34,7 +34,7 @@ export function teardownShell(): void {
   useHub.getState().client?.close();
 }
 
-export function LocationProbe() {
+function LocationProbe() {
   const l = useLocation();
   return <div data-testid="loc">{l.pathname + l.search}</div>;
 }

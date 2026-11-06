@@ -1,30 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import type { Bot } from "@muster/protocol";
 import { MAIN_BOT_ID } from "@muster/protocol";
-import { Button, ConfirmDialog, StatCard, toast } from "@muster/ui";
-import { Activity, Hand, Plus, Users, Wallet } from "lucide-react";
+import { Button, ConfirmDialog, PageHeader, toast } from "@muster/ui";
+import { Info, Plus } from "lucide-react";
 import { hubRequest, useHub } from "../../lib/hub";
-import { Page, PageGrid, PageHeader } from "../../components/layout";
-import { AddMemberCard } from "../../components/crew/AddMemberCard";
-import { CrewCard } from "../../components/crew/CrewCard";
+import { Page } from "../../components/layout";
+import { MemberCard } from "../../components/crew/MemberCard";
 import { MemberSheet, type SheetTarget } from "../../components/crew/MemberSheet";
+import { PipRow } from "../../components/crew/PipRow";
 
 export default function CrewPage() {
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const botMap = useHub((s) => s.model.bots);
   const taskMap = useHub((s) => s.model.tasks);
-  const approvalMap = useHub((s) => s.model.approvals);
-  // Main bot first, the rest in roster order.
-  const bots = useMemo(() => Object.values(botMap).sort((a, b) => Number(b.id === MAIN_BOT_ID) - Number(a.id === MAIN_BOT_ID)), [botMap]);
+  const pip = botMap[MAIN_BOT_ID];
+  const members = useMemo(() => Object.values(botMap).filter((b) => b.id !== MAIN_BOT_ID && b.kind !== "main"), [botMap]);
   const tasks = useMemo(() => Object.values(taskMap), [taskMap]);
 
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
   const [deleting, setDeleting] = useState<Bot | null>(null);
-  const [fresh, setFresh] = useState<string | null>(null);
 
-  // 命令面板 / 其他入口：/crew?new=1 直接打开向导
+  // Other entry points (search, empty states) open the add drawer with /crew?new=1.
   useEffect(() => {
     if (params.get("new") === "1") {
       setSheet({ mode: "create" });
@@ -34,57 +31,55 @@ export default function CrewPage() {
     }
   }, [params, setParams]);
 
-  const stats = useMemo(() => {
-    const online = bots.filter((b) => b.status !== "sleeping").length;
-    const working = bots.filter((b) => b.status === "working" || b.status === "thinking").length;
-    const pending = Object.values(approvalMap).filter((a) => a.status === "pending").length;
-    const cost = bots.reduce((sum, b) => sum + b.costWeekUsd, 0);
-    return { online, working, pending, cost };
-  }, [bots, approvalMap]);
-
   async function remove(bot: Bot) {
     try {
       await hubRequest("bot.remove", { botId: bot.id });
       toast.success(`${bot.name} 已离开团队`);
     } catch (e) {
       toast.error({ title: "删除失败", description: e instanceof Error ? e.message : String(e) });
-      throw e; // 让确认框保持打开
+      throw e; // keeps the confirm dialog open
     }
   }
 
   return (
     <Page>
       <PageHeader
-        title="团队"
-        subtitle={`你的 AI 团队共 ${bots.length} 位成员，随时待命，协同更高效`}
+        title="你的 AI 小队"
+        subtitle="Pip 负责协调，成员各有所长"
         actions={
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setSheet({ mode: "create" })}>
-            新建成员
+            添加成员
           </Button>
         }
       />
 
-      <PageGrid min={220} aria-label="团队概览">
-        <StatCard label="在线" value={stats.online} icon={<Users />} tone="mint" suffix={` / ${bots.length}`} hint="没在睡觉的成员" />
-        <StatCard label="工作中" value={stats.working} icon={<Activity />} tone="lavender" hint="正在思考或干活" />
-        <StatCard label="等你审批" value={stats.pending} icon={<Hand />} tone="amber" hint={stats.pending ? "点这里去处理" : "没有待处理的"} onClick={() => navigate("/inbox")} />
-        <StatCard label="本周花费" value={stats.cost} icon={<Wallet />} tone="coral" prefix="$" decimals={2} hint="全部成员合计" />
-      </PageGrid>
+      {pip && <PipRow bot={pip} onEdit={(bot) => setSheet({ mode: "edit", bot })} />}
 
-      <PageGrid min={290} aria-label="成员列表">
-        {bots.map((b) => (
-          <CrewCard key={b.id} bot={b} tasks={tasks} fresh={b.id === fresh} onEdit={(bot) => setSheet({ mode: "edit", bot })} onDelete={setDeleting} />
-        ))}
-        <AddMemberCard onClick={() => setSheet({ mode: "create" })} />
-      </PageGrid>
+      <section aria-label="成员" className="space-y-3">
+        <h2 className="text-section font-semibold text-fg">成员 · {members.length}</h2>
+        {members.length ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {members.map((b) => (
+              <MemberCard key={b.id} bot={b} tasks={tasks} onConfigure={(bot) => setSheet({ mode: "edit", bot })} />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-card border border-border bg-surface p-5 text-sm text-fg-2">还没有成员。添加一位成员，Pip 就能把合适的活儿交给 TA。</p>
+        )}
+      </section>
+
+      <div className="flex items-start gap-3 rounded-card border border-border px-5 py-4">
+        <Info size={18} className="mt-0.5 shrink-0 text-fg-3" aria-hidden />
+        <div>
+          <h2 className="text-body font-semibold text-fg">协作方式</h2>
+          <p className="text-sm text-fg-2">交给 Pip 自动安排，也可以在对话中 @ 指定成员。</p>
+        </div>
+      </div>
 
       <MemberSheet
         target={sheet}
         onClose={() => setSheet(null)}
-        onSaved={(bot, kind) => {
-          setSheet(null);
-          if (kind === "created") setFresh(bot.id);
-        }}
+        onSaved={() => setSheet(null)}
         onDelete={(bot) => {
           setSheet(null);
           setDeleting(bot);

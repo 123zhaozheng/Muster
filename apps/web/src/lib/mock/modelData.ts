@@ -2,7 +2,7 @@
 // 价格单位：美元 / 百万 token。仅用于演示模式，不要求与上游逐项一致。
 import type { ModelInfo, ProviderCatalogEntry } from "@muster/protocol";
 
-export type MockModel = Omit<ModelInfo, "provider">;
+type MockModel = Omit<ModelInfo, "provider">;
 
 const m = (id: string, name: string, contextWindow: number, maxTokens: number, reasoning: boolean, vision: boolean, costInput: number, costOutput: number): MockModel => ({
   id, name, contextWindow, maxTokens, reasoning, vision, costInput, costOutput,

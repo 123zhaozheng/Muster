@@ -19,16 +19,16 @@ export function MarkdownPre({ children }: { children?: ReactNode }) {
   return <CodeBlock code={source} lang={lang} />;
 }
 
-export function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const family = langFamily(lang);
   const lines = code.split("\n");
   return (
-    <div className="not-prose my-2.5 overflow-hidden rounded-xl border border-line bg-surface-warm shadow-soft" data-testid="code-block">
-      <div className="flex items-center justify-between border-b border-line bg-canvas-deep/70 px-3 py-1">
-        <span className="font-mono text-[11px] uppercase tracking-wide text-ink-faint">{lang ?? "text"}</span>
+    <div className="my-2.5 overflow-hidden rounded-control border border-border bg-surface-muted" data-testid="code-block">
+      <div className="flex items-center justify-between border-b border-border px-3 py-0.5">
+        <span className="font-mono text-[11px] uppercase tracking-wide text-fg-3">{lang ?? "text"}</span>
         <CopyButton text={code} label="复制代码" />
       </div>
-      <pre className="wb-scroll overflow-x-auto p-3 font-mono text-[12.5px] leading-[1.65] text-ink">
+      <pre className="overflow-x-auto p-3 font-mono text-[12.5px] leading-[1.65] text-fg">
         <code>
           {lines.map((line, i) => (
             <span key={i} className="block min-h-[1.65em] whitespace-pre">

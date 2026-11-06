@@ -44,7 +44,7 @@ export function modelFromSnapshot(s: Snapshot, prev?: HubModel): HubModel {
     approvals: byId(s.approvals),
     triggers: byId(s.triggers),
     devices: byId(s.devices),
-    events: [...s.recentEvents].sort((a, b) => (a.ts < b.ts ? 1 : -1)).slice(0, EVENT_CAP),
+    events: [...s.recentEvents].sort((a, b) => (a.ts === b.ts ? 0 : a.ts < b.ts ? 1 : -1)).slice(0, EVENT_CAP),
     modelSettings: s.modelSettings ?? {},
   };
 }
@@ -105,7 +105,7 @@ export function applyPush(m: HubModel, p: PushPayload): HubModel {
       if (!cur) return m;
       const i = cur.findIndex((x) => x.id === p.entryId);
       const e = cur[i];
-      if (i < 0 || !e || e.kind !== "bot") return m;
+      if (i < 0 || !e || (e.kind !== "bot" && e.kind !== "thinking")) return m;
       const next = cur.slice();
       next[i] = { ...e, text: e.text + p.delta };
       return { ...m, entries: { ...m.entries, [p.threadId]: next } };

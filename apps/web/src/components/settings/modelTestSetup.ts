@@ -13,7 +13,7 @@ export const CATALOG: ProviderCatalogEntry[] = [
   { id: "openrouter", name: "OpenRouter", envVar: "OPENROUTER_API_KEY", modelCount: 9, envConfigured: false, group: "聚合" },
 ];
 
-export const MODELS: ModelInfo[] = [
+const MODELS: ModelInfo[] = [
   { provider: "moonshot", id: "kimi-k2", name: "Kimi K2", contextWindow: 128000, costInput: 0.6, costOutput: 2.5, reasoning: true },
   { provider: "moonshot", id: "kimi-vl", name: "Kimi VL", contextWindow: 32000, vision: true },
   { provider: "deepseek", id: "deepseek-chat", name: "DeepSeek Chat", contextWindow: 64000 },

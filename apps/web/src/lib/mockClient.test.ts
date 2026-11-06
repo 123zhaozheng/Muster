@@ -18,10 +18,15 @@ afterEach(() => {
 });
 
 describe("snapshot / thread.get / pushes", () => {
-  it("snapshot 带夹具数据，thread.get 对未知线程报 not_found", async () => {
+  it("snapshot 带演示数据，thread.get 对未知线程报 not_found", async () => {
     const snap = await c.request("hub.snapshot", {});
-    expect(snap.bots.map((b) => b.name)).toContain("小码");
-    expect(snap.tasks).toHaveLength(3);
+    expect(snap.bots.map((b) => b.name)).toEqual(["Pip", "小码", "阿克", "小探", "小文"]);
+    expect(snap.tasks.map((t) => [t.id, t.status])).toEqual([
+      ["task-fix-callback", "done"],
+      ["task-refund-api", "waiting_approval"],
+      ["task-hiring-research", "running"],
+      ["task-weekly-report", "done"],
+    ]);
     const got = await c.request("thread.get", { threadId: "thread-fix-callback" });
     expect(got.entries.length).toBeGreaterThan(5);
     await expect(c.request("thread.get", { threadId: "nope" })).rejects.toThrow(/not_found/);
@@ -67,6 +72,23 @@ describe("主线分发", () => {
     expect(m.bots["bot-pip"]?.status).toBe("idle");
   });
 
+  it("思考：Pip 先流式思考再回复，成员开工前也先思考；结束时带用时；演示数据里有思考", async () => {
+    await c.request("chat.send", { threadId: MAIN_THREAD_ID, text: "交给小码修支付回调" });
+    await run(2000);
+    const main = entries(MAIN_THREAD_ID);
+    const reply = main.findLastIndex((e) => e.kind === "bot" && e.text === "好的，我来安排一下：");
+    const pipThought = main[reply - 1];
+    expect(pipThought).toMatchObject({ kind: "thinking", botId: "bot-pip", streaming: false });
+    expect(pipThought?.kind === "thinking" && pipThought.text).toContain("「修支付回调」交给小码");
+    expect(pipThought?.kind === "thinking" && pipThought.durationMs).toBeGreaterThanOrEqual(0);
+    const task = Object.values(c.getModel().tasks).find((t) => t.title === "修支付回调")!;
+    const kinds = entries(task.threadId).map((e) => e.kind);
+    expect(kinds.indexOf("thinking")).toBeGreaterThan(-1);
+    expect(kinds.indexOf("thinking")).toBeLessThan(kinds.indexOf("bot"));
+    const seeded = await c.request("thread.get", { threadId: "thread-fix-callback" });
+    expect(seeded.entries.some((e) => e.kind === "thinking" && !!e.durationMs && e.text.length > 0)).toBe(true);
+  });
+
   it("没提到任何 Bot 时给出引导而不是派发", async () => {
     const before = Object.keys(c.getModel().tasks).length;
     await c.request("chat.send", { threadId: MAIN_THREAD_ID, text: "你好" });
@@ -98,57 +120,75 @@ describe("主线分发", () => {
 });
 
 describe("子线程 steer / queue / interrupt", () => {
+  // 演示数据里阿克的「写退款接口」停在 pnpm install 审批上；允许后它还有 改动 -> diff -> 测试 三步要走。
+  const REFUND = "thread-refund-api";
+  const resumeRefund = () => c.request("approval.resolve", { approvalId: "ap-1", decision: "allow" });
+
   it("steer 先是 next_step，到下一步边界变 applied", async () => {
-    const r = await c.request("chat.send", { threadId: "thread-fix-callback", text: "别动 package.json", mode: "steer" });
-    const find = () => entries("thread-fix-callback").find((e) => e.id === r.entryId);
+    await resumeRefund();
+    const r = await c.request("chat.send", { threadId: REFUND, text: "别动 package.json", mode: "steer" });
+    const find = () => entries(REFUND).find((e) => e.id === r.entryId);
     expect(find()).toMatchObject({ kind: "steer", mode: "steer", applied: "next_step" });
     await run(150);
     expect(find()).toMatchObject({ applied: "applied" });
-    expect(entries("thread-fix-callback").some((e) => e.kind === "bot" && e.text.includes("别动 package.json"))).toBe(true);
+    expect(entries(REFUND).some((e) => e.kind === "bot" && e.text.includes("别动 package.json"))).toBe(true);
   });
 
   it("queue 在当前回合结束后才处理；normal 忙碌时等同 queue", async () => {
-    const q = await c.request("chat.send", { threadId: "thread-fix-callback", text: "完事后补一个测试", mode: "queue" });
-    const n = await c.request("chat.send", { threadId: "thread-fix-callback", text: "再看下日志" });
-    const find = (id: string) => entries("thread-fix-callback").find((e) => e.id === id);
+    await resumeRefund();
+    const q = await c.request("chat.send", { threadId: REFUND, text: "完事后补一个测试", mode: "queue" });
+    const n = await c.request("chat.send", { threadId: REFUND, text: "再看下日志" });
+    const find = (id: string) => entries(REFUND).find((e) => e.id === id);
     expect(find(q.entryId)).toMatchObject({ kind: "steer", mode: "queue", applied: "pending" });
     expect(find(n.entryId)).toMatchObject({ kind: "steer", mode: "queue", applied: "pending" });
     await run(250);
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("running");
+    expect(c.getModel().tasks["task-refund-api"]?.status).toBe("running");
     expect(find(q.entryId)).toMatchObject({ applied: "pending" });
     await run(3000);
     expect(find(q.entryId)).toMatchObject({ applied: "applied" });
     expect(find(n.entryId)).toMatchObject({ applied: "applied" });
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("done");
+    expect(c.getModel().tasks["task-refund-api"]?.status).toBe("done");
   });
 
   it("interrupt 立即生效并终止当前脚本", async () => {
-    const r = await c.request("chat.send", { threadId: "thread-fix-callback", text: "停，换个思路", mode: "interrupt" });
-    expect(entries("thread-fix-callback").find((e) => e.id === r.entryId)).toMatchObject({ kind: "steer", mode: "interrupt", applied: "applied" });
+    await resumeRefund();
+    const r = await c.request("chat.send", { threadId: REFUND, text: "停，换个思路", mode: "interrupt" });
+    expect(entries(REFUND).find((e) => e.id === r.entryId)).toMatchObject({ kind: "steer", mode: "interrupt", applied: "applied" });
     await run(3000);
-    // 被打断后只跑"收到 -> 处理"的小回合，原脚本里的 diff 不会再出现
-    expect(entries("thread-fix-callback").filter((e) => e.kind === "diff")).toHaveLength(1);
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("done");
+    // 被打断后只跑"收到 -> 处理"的小回合，原脚本里的 diff / 测试不会再出现
+    expect(entries(REFUND).filter((e) => e.kind === "diff" || e.kind === "test_result")).toHaveLength(0);
+    expect(c.getModel().tasks["task-refund-api"]?.status).toBe("done");
   });
 
-  it("task.interrupt 让任务回到待命，随后发消息会重新开始一个回合", async () => {
-    await c.request("task.interrupt", { taskId: "task-fix-callback" });
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("queued");
+  it("空闲任务收到消息直接开新回合，不走 steer / queue", async () => {
+    const r = await c.request("chat.send", { threadId: "thread-fix-callback", text: "再补一个回归测试", mode: "steer" });
+    expect(entries("thread-fix-callback").find((e) => e.id === r.entryId)).toMatchObject({ kind: "user" });
+    expect(c.getModel().tasks["task-fix-callback"]).toMatchObject({ status: "running" });
+    expect(c.getModel().tasks["task-fix-callback"]?.progress).toBeUndefined();
     await run(1000);
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("queued");
-    await c.request("chat.send", { threadId: "thread-fix-callback", text: "继续" });
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("running");
-    await run(1000);
-    expect(c.getModel().tasks["task-fix-callback"]?.status).toBe("done");
+    expect(c.getModel().tasks["task-fix-callback"]).toMatchObject({ status: "done", progress: 100 });
   });
 
-  it("task.cancel 结束任务，之后不再推进", async () => {
-    await c.request("task.cancel", { taskId: "task-fix-callback-b" });
-    const t = c.getModel().tasks["task-fix-callback-b"]!;
-    expect(t.status).toBe("cancelled");
+  it("task.interrupt 让任务回到待命，随后发消息会重新开始一个回合；已结束的任务不能打断", async () => {
+    await c.request("task.interrupt", { taskId: "task-hiring-research" });
+    expect(c.getModel().tasks["task-hiring-research"]?.status).toBe("queued");
+    await run(1000);
+    expect(c.getModel().tasks["task-hiring-research"]?.status).toBe("queued");
+    await c.request("chat.send", { threadId: "thread-hiring-research", text: "继续" });
+    expect(c.getModel().tasks["task-hiring-research"]?.status).toBe("running");
+    await run(1000);
+    expect(c.getModel().tasks["task-hiring-research"]?.status).toBe("done");
+    await expect(c.request("task.interrupt", { taskId: "task-fix-callback" })).rejects.toThrow(/conflict/);
+  });
+
+  it("task.cancel 结束任务、作废待处理审批，之后不再推进", async () => {
+    await c.request("task.cancel", { taskId: "task-refund-api" });
+    expect(c.getModel().tasks["task-refund-api"]?.status).toBe("cancelled");
+    expect(c.getModel().approvals["ap-1"]?.status).toBe("expired");
     await run(2000);
-    expect(c.getModel().tasks["task-fix-callback-b"]?.status).toBe("cancelled");
-    await expect(c.request("task.cancel", { taskId: "task-fix-callback-b" })).rejects.toThrow(/conflict/);
+    expect(c.getModel().tasks["task-refund-api"]?.status).toBe("cancelled");
+    await expect(c.request("task.cancel", { taskId: "task-refund-api" })).rejects.toThrow(/conflict/);
+    await expect(c.request("task.cancel", { taskId: "task-fix-callback" })).rejects.toThrow(/conflict/);
   });
 });
 
@@ -178,13 +218,17 @@ describe("fork / 分支", () => {
     const { task, branch } = await c.request("task.fork", { taskId: "task-fix-callback", entryId: "e-wb-5", label: "重试方案" });
     expect(task.forkedFrom).toEqual({ taskId: "task-fix-callback", entryId: "e-wb-5" });
     expect(task.parentThreadId).toBe("thread-fix-callback");
-    expect(branch).toMatchObject({ taskId: task.id, forkEntryId: "e-wb-5", label: "分支 C：重试方案" });
+    expect(branch).toMatchObject({ taskId: task.id, forkEntryId: "e-wb-5", label: "分支 B：重试方案" });
     expect(c.getModel().threads[task.threadId]?.taskId).toBe(task.id);
 
+    // 原任务已经跑完：补出的 分支 A 带上它的改动文件数与测试结果
     const { branches } = await c.request("task.branches", { taskId: "task-fix-callback" });
-    expect(branches.map((b) => b.id).sort()).toEqual(["br-a", "br-b", branch.id].sort());
+    expect(branches).toHaveLength(2);
+    const original = branches.find((b) => b.taskId === "task-fix-callback")!;
+    expect(original).toMatchObject({ label: "分支 A：原方案", filesChanged: 2, tests: { passed: 12, failed: 0 } });
+    expect(branches.map((b) => b.id)).toContain(branch.id);
 
-    await c.request("branch.adopt", { branchId: "br-a" });
+    await c.request("branch.adopt", { branchId: original.id });
     const second = await c.request("branch.adopt", { branchId: branch.id });
     expect(second.branch.adopted).toBe(true);
     const after = (await c.request("task.branches", { taskId: task.id })).branches;
@@ -229,6 +273,7 @@ describe("触发器", () => {
   });
 
   it("询问模式：生成待确认审批，允许后才派发任务", async () => {
+    await c.request("trigger.upsert", { trigger: { ...c.getModel().triggers["tr-pr"]!, mode: "ask" } });
     const tasks = Object.keys(c.getModel().tasks).length;
     const { eventId } = await c.request("trigger.fire", { triggerId: "tr-pr" });
     expect(c.getModel().events.find((e) => e.id === eventId)).toMatchObject({ source: "github", status: "recorded" });
@@ -240,13 +285,30 @@ describe("触发器", () => {
     expect(c.getModel().events.some((e) => e.triggerId === "tr-pr" && e.status === "dispatched" && e.taskId)).toBe(true);
   });
 
-  it("自动模式：直接派发，受每日预算限制，无人值守的审批自动拒绝", async () => {
+  it("自动模式：直接派发给原生成员（不需要审批），受每日预算限制", async () => {
     const { eventId } = await c.request("trigger.fire", { triggerId: "tr-brief" });
     const ev = c.getModel().events.find((e) => e.id === eventId)!;
     expect(ev.status).toBe("dispatched");
     const task = c.getModel().tasks[ev.taskId!]!;
     expect(task.botId).toBe("bot-xiaotan");
     expect(entries(MAIN_THREAD_ID).some((e) => e.kind === "dispatch" && e.taskId === task.id)).toBe(true);
+    await run(3000);
+    expect(c.getModel().tasks[task.id]?.status).toBe("done");
+    expect(Object.values(c.getModel().approvals).some((a) => a.taskId === task.id)).toBe(false);
+
+    const { eventId: second } = await c.request("trigger.fire", { triggerId: "tr-brief" }); // 预算 1 次/天
+    expect(c.getModel().events.find((e) => e.id === second)?.status).toBe("ignored");
+  });
+
+  it("自动模式派给编程成员：无人值守的审批自动拒绝，任务换方式继续并完成", async () => {
+    const { trigger } = await c.request("trigger.upsert", {
+      trigger: { label: "夜间依赖巡检", source: "cron", params: { expr: "0 2 * * *" }, targetBotId: "bot-xiaoma", mode: "auto", enabled: true, dailyBudget: 1, autoDenyApprovalsWhenUnattended: true },
+    });
+    const { eventId } = await c.request("trigger.fire", { triggerId: trigger.id });
+    const ev = c.getModel().events.find((e) => e.id === eventId)!;
+    expect(ev.status).toBe("dispatched");
+    const task = c.getModel().tasks[ev.taskId!]!;
+    expect(task.botId).toBe("bot-xiaoma");
 
     await run(1500); // 走到审批步骤，无人值守 -> 自动拒绝
     const ap = Object.values(c.getModel().approvals).find((a) => a.taskId === task.id)!;
@@ -254,7 +316,7 @@ describe("触发器", () => {
     await run(2000);
     expect(c.getModel().tasks[task.id]?.status).toBe("done");
 
-    const { eventId: second } = await c.request("trigger.fire", { triggerId: "tr-brief" }); // 预算 1 次/天
+    const { eventId: second } = await c.request("trigger.fire", { triggerId: trigger.id }); // 预算 1 次/天
     expect(c.getModel().events.find((e) => e.id === second)?.status).toBe("ignored");
   });
 

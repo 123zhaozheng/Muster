@@ -175,6 +175,11 @@ export type Entry =
   /** A user message injected while the bot was busy. */
   | (EntryBase & { kind: "steer"; text: string; mode: "steer" | "queue" | "interrupt"; applied: "pending" | "next_step" | "applied" })
   | (EntryBase & { kind: "bot"; botId: BotId; text: string; streaming?: boolean })
+  /**
+   * The model's reasoning before / between answers ("思考"). Grows via `entry.delta` while `streaming`;
+   * `durationMs` is set when it finishes. Text may be an engine summary. Clients that do not know it may skip it.
+   */
+  | (EntryBase & { kind: "thinking"; botId: BotId; text: string; streaming?: boolean; durationMs?: number })
   /** Folded tool activity: "读取了 6 个文件 · 运行了 2 条命令". */
   | (EntryBase & { kind: "tool_summary"; botId: BotId; reads: number; commands: number; edits: number; items: ToolItem[] })
   /** The main bot dispatching work to a sub-bot (renders as a dispatch card). */
@@ -432,7 +437,7 @@ export type PushPayload =
   | { kind: "thread.updated"; thread: Thread }
   | { kind: "task.updated"; task: Task }
   | { kind: "entry.appended"; entry: Entry }
-  /** Streaming text for an existing `bot` entry (append `delta` to its text). */
+  /** Streaming text for an existing `bot` or `thinking` entry (append `delta` to its text). */
   | { kind: "entry.delta"; threadId: ThreadId; entryId: EntryId; delta: string }
   /** Replace an existing entry in place (e.g. streaming finished, steer applied). */
   | { kind: "entry.replaced"; entry: Entry }

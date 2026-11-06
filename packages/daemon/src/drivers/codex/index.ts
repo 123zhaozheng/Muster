@@ -6,6 +6,8 @@
 // Mapping (Codex -> DriverEvent):
 //   turn/started                      -> turn_start (1-based counter, ids remembered for fork)
 //   item/agentMessage/delta           -> text_delta;  item/completed(agentMessage) -> text_done
+//   item/reasoning/summaryTextDelta   -> thinking_delta (raw item/reasoning/textDelta when no summary);
+//                                        item/completed(reasoning) -> thinking_done (full text if nothing streamed)
 //   item/completed(commandExecution)  -> tool(command | read when every parsed action is a read)
 //   item/completed(fileChange)        -> tool(edit) + diff
 //   item/{commandExecution,fileChange}/requestApproval (server request) -> approval; resolveApproval -> accept|decline
@@ -66,6 +68,8 @@ class CodexSession implements DriverSession {
   private readonly approvals = new Map<string, { rpcId: RpcId; method: string }>();
   private readonly fileChanges = new Map<string, any[]>();
   private readonly streamed = new Set<string>();
+  /** 正在流式输出的推理块：itemId -> 采用的那一路（摘要 / 原文）与当前段号。 */
+  private readonly reasoning = new Map<string, { via: "summary" | "raw"; index: number }>();
 
   constructor(private readonly o: Resolved) {}
 
@@ -237,9 +241,29 @@ class CodexSession implements DriverSession {
         this.events.push({ t: "text_delta", delta: String(p.delta ?? "") });
         return;
       }
+      case "item/reasoning/summaryTextDelta":
+      case "item/reasoning/textDelta": {
+        const via = n.method === "item/reasoning/textDelta" ? "raw" : "summary";
+        const index = Number(via === "raw" ? p.contentIndex : p.summaryIndex) || 0;
+        const delta = String(p.delta ?? "");
+        const key = String(p.itemId);
+        const cur = this.reasoning.get(key);
+        // 同一个推理块优先展示先到的那一路（通常是摘要），避免摘要与原文重复。
+        if (!delta || (cur && cur.via !== via)) return;
+        const gap = cur && cur.index !== index ? "\n\n" : "";
+        this.reasoning.set(key, { via, index });
+        this.events.push({ t: "thinking_delta", delta: gap + delta });
+        return;
+      }
       case "item/completed": {
         const item = p.item;
-        if (item?.type === "agentMessage") {
+        if (item?.type === "reasoning") {
+          const streamed = this.reasoning.delete(String(item.id));
+          const parts = (xs: unknown): string => (Array.isArray(xs) ? xs.map(String).filter((x) => x.trim()).join("\n\n") : "");
+          const full = streamed ? "" : parts(item.summary) || parts(item.content);
+          if (full) this.events.push({ t: "thinking_delta", delta: full });
+          if (streamed || full) this.events.push({ t: "thinking_done" });
+        } else if (item?.type === "agentMessage") {
           if (!this.streamed.has(String(item.id)) && item.text) this.events.push({ t: "text_delta", delta: String(item.text) });
           this.streamed.delete(String(item.id));
           this.events.push({ t: "text_done" });

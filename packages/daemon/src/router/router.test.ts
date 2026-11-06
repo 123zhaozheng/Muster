@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxThinking, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai/providers/faux";
 import type { Bot, Entry, Task } from "@muster/protocol";
 import { MAIN_THREAD_ID } from "@muster/protocol";
 import { createHub } from "../core/hub";
@@ -265,6 +265,23 @@ describe("模型路由（pi-ai faux）", () => {
     expect(deltas.join("")).toBe("你好呀，今天想先做点什么？");
     expect(deltas.length).toBeGreaterThan(1);
     expect(systemTexts(entries())).toEqual([]);
+  });
+
+  it("模型的思考落成一条折叠的 thinking 条目（流式，结束时带用时），排在回复之前", async () => {
+    const { service } = fauxModelService([fauxAssistantMessage([fauxThinking("用户在打招呼，简单回应即可。"), fauxText("你好！")])]);
+    const { router, entries, hub } = setup({ modelService: service });
+    const deltas: string[] = [];
+    hub.subscribe((p) => {
+      if (p.push.kind === "entry.delta" && entries().find((e) => e.id === (p.push as { entryId: string }).entryId)?.kind === "thinking") deltas.push(p.push.delta);
+    });
+    await router.handleUserMessage("嗨");
+    expect(entries().map((e) => e.kind)).toEqual(["user", "thinking", "bot"]);
+    const thinking = entries()[1] as Extract<Entry, { kind: "thinking" }>;
+    expect(thinking).toMatchObject({ botId: "bot-pip", text: "用户在打招呼，简单回应即可。", streaming: false });
+    expect(thinking.durationMs).toBeGreaterThanOrEqual(0);
+    expect(deltas.join("")).toBe("用户在打招呼，简单回应即可。");
+    expect(botTexts(entries())).toEqual(["你好！"]);
+    expect(hub.model.threads[MAIN_THREAD_ID]?.lastText).toBe("你好！");
   });
 
   it("模型直接输出文字也算回复", async () => {

@@ -3,79 +3,60 @@
 @source "./**/*.{ts,tsx}";
 
 /*
- * Muster design tokens — SHARED CONTRACT. Everyone uses these (bg-canvas, text-ink, rounded-card, …).
- * Add tokens freely; do not rename or change existing ones (U1 owns this file).
- * Reference: design/mockups/*.png  (Lovable / Meta-Muse feel: warm off-white, soft glow, frosted cards).
+ * Muster design tokens (docs/12 §1). One accent colour; member colours only appear next to avatars.
+ * Surfaces are flat: borders instead of shadows, one overlay shadow for floating layers.
  */
 @theme {
-  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-sans: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
 
-  --color-canvas: #fbf8f4;
-  --color-canvas-deep: #f5efe8;
+  --color-canvas: #fcfbf9;
+  --color-sidebar: #f5f4f1;
   --color-surface: #ffffff;
-  --color-ink: #2b2522;
-  --color-ink-soft: #6f655e;
-  --color-ink-faint: #a69b92;
-  --color-line: #ece3d9;
+  --color-surface-muted: #f2f3f5;
+  --color-border: #e7e6e2;
 
-  --color-coral: #ff6b4a;
-  --color-coral-deep: #e5532f;
-  --color-coral-soft: #ffe9e3;
-  --color-lavender: #8b7cf6;
-  --color-lavender-soft: #eeebff;
-  --color-mint: #34c58a;
-  --color-mint-soft: #def7ec;
-  --color-amber: #f5a524;
-  --color-amber-soft: #fff1d6;
-  --color-sky: #5aa9f5;
-  --color-sky-soft: #e3f0ff;
-  --color-danger: #e5484d;
-  --color-danger-soft: #fde8e8;
+  --color-fg: #24272c;
+  --color-fg-2: #626a76;
+  --color-fg-3: #737983;
 
-  /* v2: extra tints and brand gradient stops */
-  --color-coral-glow: #ff8a65;
-  --color-lavender-deep: #6e5de0;
-  --color-mint-deep: #1fa371;
-  --color-amber-deep: #d98a0b;
-  --color-sky-deep: #3b8ee0;
-  --color-danger-deep: #cf3338;
-  --color-surface-warm: #fffdfa;
+  --color-accent: #5976d9;
+  --color-accent-hover: #4964c3;
+  --color-accent-surface: #edf2ff;
 
-  /* Pebble (mascot) body colours */
-  --color-pebble-cream: #fbe7c6;
-  --color-pebble-mint: #a8ecc6;
-  --color-pebble-peach: #ffb08f;
-  --color-pebble-sky: #a9d3ff;
-  --color-pebble-lilac: #cdbdff;
-  --color-pebble-rose: #ffc2d4;
-  --color-pebble-butter: #ffe48a;
+  --color-success: #28805d;
+  --color-success-surface: #e8f4ee;
+  --color-warning: #9a6700;
+  --color-warning-surface: #fbf1dc;
+  --color-danger: #ba3f3b;
+  --color-danger-surface: #fbeaea;
 
-  --radius-card: 20px;
-  --radius-card-lg: 24px;
-  --radius-pill: 999px;
+  --color-pebble-cream: #f6e3c2;
+  --color-pebble-mint: #bde8d2;
+  --color-pebble-peach: #f9c3ac;
+  --color-pebble-sky: #c3ddf7;
+  --color-pebble-lilac: #d9cef5;
+  /* protocol BotColor still has rose / butter: they render as the closest member colour */
+  --color-pebble-rose: var(--color-pebble-peach);
+  --color-pebble-butter: var(--color-pebble-cream);
 
-  /* Three-layer soft shadows: contact + ambient + spread. */
-  --shadow-card: 0 1px 2px rgb(60 40 20 / 0.04), 0 4px 10px rgb(60 40 20 / 0.04), 0 10px 28px rgb(60 40 20 / 0.06);
-  --shadow-soft: 0 1px 2px rgb(60 40 20 / 0.04), 0 3px 8px rgb(60 40 20 / 0.04), 0 8px 20px rgb(60 40 20 / 0.05);
-  --shadow-lift: 0 2px 4px rgb(60 40 20 / 0.05), 0 10px 20px rgb(60 40 20 / 0.08), 0 24px 48px rgb(60 40 20 / 0.1);
-  --shadow-float: 0 12px 40px rgb(60 40 20 / 0.12);
-  --shadow-pop: 0 4px 8px rgb(60 40 20 / 0.06), 0 16px 32px rgb(60 40 20 / 0.12), 0 36px 72px rgb(60 40 20 / 0.14);
-  --shadow-glow-coral: 0 1px 2px rgb(229 83 47 / 0.3), 0 6px 16px rgb(255 107 74 / 0.32), 0 14px 30px rgb(255 107 74 / 0.18);
-  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.55);
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-composer: 18px;
+  --radius-overlay: 20px;
+
+  --shadow-overlay: 0 8px 28px rgb(36 39 44 / 0.12), 0 2px 6px rgb(36 39 44 / 0.06);
+
+  --text-title: 1.75rem;
+  --text-title--line-height: 2.25rem;
+  --text-section: 1.0625rem;
+  --text-section--line-height: 1.5rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.7;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.25rem;
 
   --ease-muster: cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-:root {
-  /* Motion tokens (docs/10): micro 120~200ms, transition 240~320ms, one easing. */
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-micro: 160ms;
-  --dur-base: 280ms;
-  --dur-slow: 450ms;
-  --brand-gradient: linear-gradient(135deg, #ff8a65 0%, #ff6b4a 55%, #ff5a7a 100%);
-  --brand-gradient-soft: linear-gradient(135deg, #fff1ea 0%, #ffe9e3 50%, #f1ecff 100%);
-  --focus-ring: 0 0 0 3px rgb(255 107 74 / 0.28);
 }
 
 @layer base {
@@ -87,387 +68,230 @@
   body {
     margin: 0;
     background: var(--color-canvas);
-    color: var(--color-ink);
+    color: var(--color-fg);
     font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 1.7;
+    letter-spacing: 0;
     -webkit-font-smoothing: antialiased;
-    font-variant-numeric: tabular-nums;
   }
   * {
-    border-color: var(--color-line);
+    border-color: var(--color-border);
+    scrollbar-width: thin;
+    scrollbar-color: rgb(115 121 131 / 0.4) transparent;
   }
   ::selection {
-    background: rgb(255 107 74 / 0.22);
+    background: rgb(89 118 217 / 0.2);
   }
   :where(button, [role="button"], a, [tabindex]):focus-visible {
-    outline: 2px solid rgb(255 107 74 / 0.55);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 }
 
-/* ───────── Surfaces, gradients and page backdrops (v2) ───────── */
-
-/* Soft glow backdrop used behind app chrome */
-.muster-glow {
-  background:
-    radial-gradient(60% 50% at 85% 0%, rgb(255 138 101 / 0.22), transparent 70%),
-    radial-gradient(50% 50% at 0% 100%, rgb(139 124 246 / 0.18), transparent 70%),
-    var(--color-canvas);
-}
-/* Page-level halo: put on the page wrapper; it paints a warm + lavender glow at the top. */
-.muster-page-glow {
-  position: relative;
-  isolation: isolate;
-}
-.muster-page-glow::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 380px;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(46% 100% at 12% 0%, rgb(255 138 101 / 0.2), transparent 72%),
-    radial-gradient(40% 90% at 88% 0%, rgb(139 124 246 / 0.16), transparent 72%),
-    radial-gradient(30% 70% at 50% 0%, rgb(52 197 138 / 0.08), transparent 75%);
-}
-/* Frosted glass, three levels: 1 = quiet panel, 2 = card (alias muster-frost), 3 = floating layer (menus, dialogs). */
-.muster-glass-1 {
-  background: rgb(255 255 255 / 0.5);
-  backdrop-filter: blur(8px) saturate(1.1);
-  border: 1px solid rgb(255 255 255 / 0.55);
-}
-.muster-frost,
-.muster-glass-2 {
-  background: rgb(255 255 255 / 0.72);
-  backdrop-filter: blur(14px) saturate(1.15);
-  border: 1px solid rgb(255 255 255 / 0.6);
-}
-.muster-glass-3 {
-  background: rgb(255 255 255 / 0.88);
-  backdrop-filter: blur(22px) saturate(1.25);
-  border: 1px solid rgb(255 255 255 / 0.7);
-  box-shadow: var(--shadow-pop), var(--shadow-inset-top);
-}
-.muster-gradient-brand {
-  background: var(--brand-gradient);
-}
-.muster-gradient-brand-soft {
-  background: var(--brand-gradient-soft);
-}
-.muster-text-gradient {
-  background: linear-gradient(120deg, #ff6b4a 0%, #ff5a7a 45%, #8b7cf6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-/* Coloured halo blob behind illustrations. Set --halo: #hex for the tint. */
-.muster-halo {
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--halo, #ff8a65) 38%, transparent), transparent 100%);
-}
-.muster-hairline {
-  background: linear-gradient(90deg, transparent, var(--color-line), transparent);
-  height: 1px;
+/*
+ * ───────── CJK typography (docs/14 §6.2) ─────────
+ * Body 15px / 1.7, CJK set solid (no letter-spacing), roughly a quarter-em gap between Han and Latin/digits where the
+ * browser supports text-autospace (progressive enhancement: older engines simply show no gap). Hierarchy comes from the
+ * three greys (fg / fg-2 / fg-3) and spacing, not borders.
+ */
+@layer base {
+  @supports (text-autospace: normal) {
+    :root { text-autospace: normal; }
+    /* code and command text keeps its exact spacing */
+    :where(code, pre, kbd, samp, .font-mono, input, textarea) { text-autospace: no-autospace; }
+  }
 }
 
-/* Lift on hover: +2px and a deeper shadow. Add to any card-like element. */
-.hover-lift {
-  transition: transform var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease), border-color var(--dur-micro) ease;
-}
-.hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
-}
-.hover-lift:active {
-  transform: translateY(0);
-  box-shadow: var(--shadow-soft);
-  transition-duration: var(--dur-micro);
-}
-.focus-ring:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+/* Long-form chat text: ≤ 40 Han characters per line, paragraphs grouped by space, emphasis at most medium weight. */
+@layer components {
+  .prose-chat {
+    max-width: 40em;
+    font-size: 15px;
+    line-height: 1.7;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+  .prose-chat :where(p, ul, ol, blockquote, pre, table) { margin: 0; }
+  .prose-chat :where(p, ul, ol, blockquote, pre, table) + :where(p, ul, ol, blockquote, pre, table, h1, h2, h3, h4) { margin-top: 0.75em; }
+  .prose-chat :where(h1, h2, h3, h4) { margin: 1em 0 0.25em; font-size: 1em; font-weight: 600; line-height: 1.6; }
+  .prose-chat :where(h1, h2, h3, h4):first-child { margin-top: 0; }
+  .prose-chat :where(ul, ol) { padding-left: 1.4em; }
+  .prose-chat :where(li + li) { margin-top: 0.25em; }
+  .prose-chat :where(strong, b) { font-weight: 500; color: var(--color-fg); }
+  .prose-chat :where(blockquote) { padding-left: 1em; color: var(--color-fg-2); }
 }
 
-/* ───────── Entrance + utility animations (no-ops under reduced motion) ───────── */
-@media (prefers-reduced-motion: no-preference) {
-  .muster-page-enter {
-    animation: muster-fade-up var(--dur-base) var(--ease) both;
-  }
-  /* children appear one after another: set style="--i: n" on each, or use .muster-stagger on the parent */
-  .muster-stagger > * {
-    animation: muster-fade-up 360ms var(--ease) both;
-    animation-delay: calc(var(--i, 0) * 45ms);
-  }
-  .muster-stagger > *:nth-child(1) { --i: 0; }
-  .muster-stagger > *:nth-child(2) { --i: 1; }
-  .muster-stagger > *:nth-child(3) { --i: 2; }
-  .muster-stagger > *:nth-child(4) { --i: 3; }
-  .muster-stagger > *:nth-child(5) { --i: 4; }
-  .muster-stagger > *:nth-child(6) { --i: 5; }
-  .muster-stagger > *:nth-child(7) { --i: 6; }
-  .muster-stagger > *:nth-child(8) { --i: 7; }
-  .muster-stagger > *:nth-child(n + 9) { --i: 8; }
-  .muster-fade-in {
-    animation: muster-fade-in var(--dur-base) var(--ease) both;
-  }
-  .muster-pop-in {
-    animation: muster-pop-in var(--dur-base) var(--ease) both;
-  }
-  .muster-skeleton::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.7), transparent);
-    animation: muster-shimmer 1.5s ease-in-out infinite;
-  }
-  .muster-progress-shine::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / 0.55) 50%, transparent 80%);
-    background-size: 60% 100%;
-    background-repeat: no-repeat;
-    animation: muster-sheen 1.6s linear infinite;
-  }
-  .muster-progress-indeterminate > div {
-    width: 40% !important;
-    animation: muster-indeterminate 1.4s var(--ease) infinite;
-  }
-  .muster-ping::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: inherit;
-    animation: muster-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-  .muster-spin {
-    animation: muster-spin 0.8s linear infinite;
-  }
-  .muster-count-pop {
-    animation: muster-count-pop 320ms var(--ease);
-  }
-  .muster-sheet[data-state="open"] { animation: muster-sheet-in 320ms var(--ease); }
-  .muster-sheet[data-state="closed"] { animation: muster-sheet-out 220ms var(--ease) forwards; }
-  .muster-sheet-left[data-state="open"] { animation: muster-sheet-in-left 320ms var(--ease); }
-  .muster-sheet-left[data-state="closed"] { animation: muster-sheet-out-left 220ms var(--ease) forwards; }
-  .muster-overlay[data-state="open"] { animation: muster-fade-in 240ms ease both; }
-  .muster-overlay[data-state="closed"] { animation: muster-fade-out 180ms ease forwards; }
-  .muster-dialog[data-state="open"] { animation: muster-dialog-in 280ms var(--ease); }
-  .muster-dialog[data-state="closed"] { animation: muster-dialog-out 160ms ease forwards; }
-  .muster-palette[data-state="open"] { animation: muster-palette-in 260ms var(--ease); }
-  .muster-palette[data-state="closed"] { animation: muster-fade-out 140ms ease forwards; }
-  .muster-menu[data-state="open"] { animation: muster-menu-in 200ms var(--ease); }
-  .muster-menu[data-state="closed"] { animation: muster-fade-out 120ms ease forwards; }
-}
-.muster-skeleton {
-  position: relative;
-  overflow: hidden;
-  background: var(--color-canvas-deep);
-}
-.muster-progress-shine {
-  position: relative;
-  overflow: hidden;
-}
-@keyframes muster-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* ───────── Floating layers: the only place with motion + shadow (200–240ms) ───────── */
 @keyframes muster-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes muster-fade-out { from { opacity: 1; } to { opacity: 0; } }
-@keyframes muster-pop-in { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
-@keyframes muster-shimmer { to { transform: translateX(100%); } }
-@keyframes muster-sheen { from { background-position: -80% 0; } to { background-position: 180% 0; } }
-@keyframes muster-indeterminate { 0% { transform: translateX(-110%); } 100% { transform: translateX(280%); } }
-@keyframes muster-ping { 0% { transform: scale(1); opacity: 0.55; } 75%, 100% { transform: scale(2.4); opacity: 0; } }
-@keyframes muster-spin { to { transform: rotate(360deg); } }
-@keyframes muster-count-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-@keyframes muster-sheet-in { from { transform: translateX(100%); opacity: 0.6; } to { transform: none; opacity: 1; } }
-@keyframes muster-sheet-out { from { transform: none; } to { transform: translateX(100%); opacity: 0.6; } }
-@keyframes muster-sheet-in-left { from { transform: translateX(-100%); opacity: 0.6; } to { transform: none; opacity: 1; } }
-@keyframes muster-sheet-out-left { from { transform: none; } to { transform: translateX(-100%); opacity: 0.6; } }
-@keyframes muster-dialog-in { from { opacity: 0; transform: translate(-50%, -47%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-@keyframes muster-dialog-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -48%) scale(0.97); } }
-@keyframes muster-palette-in { from { opacity: 0; transform: translate(-50%, -10px) scale(0.98); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
-@keyframes muster-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes muster-pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes muster-pop-out { from { opacity: 1; } to { opacity: 0; transform: scale(0.98); } }
+@keyframes muster-dialog-in { from { opacity: 0; scale: 0.98; } to { opacity: 1; scale: 1; } }
+@keyframes muster-drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes muster-drawer-out { from { transform: none; } to { transform: translateX(100%); } }
+@keyframes muster-drawer-in-left { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes muster-drawer-out-left { from { transform: none; } to { transform: translateX(-100%); } }
+@keyframes muster-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-/* ───────── Pebble animations (U1). Only enabled when the user has not asked for reduced motion. ───────── */
-.pebble g,
-.pebble-streak,
+.muster-fade-in { animation: muster-fade-in 160ms var(--ease-muster) both; }
+.muster-overlay[data-state="open"] { animation: muster-fade-in 200ms ease both; }
+.muster-overlay[data-state="closed"] { animation: muster-fade-out 160ms ease forwards; }
+.muster-pop[data-state="open"] { animation: muster-pop-in 200ms var(--ease-muster); }
+.muster-pop[data-state="closed"] { animation: muster-pop-out 140ms ease-in forwards; }
+.muster-dialog[data-state="open"] { animation: muster-dialog-in 220ms var(--ease-muster); }
+.muster-dialog[data-state="closed"] { animation: muster-fade-out 140ms ease forwards; }
+.muster-drawer[data-state="open"] { animation: muster-drawer-in 240ms var(--ease-muster); }
+.muster-drawer[data-state="closed"] { animation: muster-drawer-out 200ms var(--ease-muster) forwards; }
+.muster-drawer-left[data-state="open"] { animation: muster-drawer-in-left 240ms var(--ease-muster); }
+.muster-drawer-left[data-state="closed"] { animation: muster-drawer-out-left 200ms var(--ease-muster) forwards; }
+.muster-toast { animation: muster-toast-in 200ms var(--ease-muster) both; }
+
+/* ───────── Pebble: always-on micro motion, gated by .pebble-live (off under reduced motion / animated={false}) ───────── */
+.pebble-trans,
+.pebble-pop,
+.pebble-body,
+.pebble-blink,
+.pebble-glance,
+.pebble-look,
+.pebble-sprout,
+.pebble-ticks,
+.pebble-bang,
 .pebble-ring,
-.pebble-zzz,
-.pebble-twinkle,
-.pebble-halo,
-.pebble-shadow,
-.pebble-dot {
-  /* only animated nodes: static transform="rotate(a cx cy)" attributes must keep the view-box origin */
+.pebble-cheer,
+.pebble-alert,
+.pebble-dot,
+.pebble-zzz {
   transform-box: fill-box;
 }
 .pebble-trans,
 .pebble-pop,
-.pebble-body {
+.pebble-body,
+.pebble-sprout {
   transform-origin: 50% 100%;
 }
-.pebble-look {
+.pebble-blink,
+.pebble-ticks,
+.pebble-bang,
+.pebble-ring,
+.pebble-cheer,
+.pebble-alert,
+.pebble-dot {
+  transform-origin: 50% 50%;
+}
+.pebble-ring { opacity: 0; }
+.pebble-interactive { cursor: default; }
+.pebble-interactive .pebble-look {
   transform: translate(calc(var(--ex, 0) * 1px), calc(var(--ey, 0) * 1px));
   transition: transform 140ms ease-out;
 }
-.pebble-pop {
-  transition: transform 260ms var(--ease);
-}
-.pebble-cheeks {
-  transition: opacity 200ms ease;
-}
-.pebble-interactive:hover .pebble-pop {
-  transform: translateY(-2px) scale(1.05);
-}
-.pebble-interactive:hover .pebble-cheeks {
-  opacity: 0.62;
-}
-.pebble-anim-error .pebble-sprout {
-  transform: rotate(24deg);
-  transform-origin: 50% 100%;
-}
-.pebble-anim-sleeping .pebble-sprout {
-  transform: rotate(-10deg);
-  transform-origin: 50% 100%;
-}
+.pebble-interactive .pebble-pop { transition: transform 240ms var(--ease-muster); }
+.pebble-interactive .pebble-cheeks { transition: opacity 200ms ease; }
+.pebble-interactive:hover .pebble-pop { transform: translateY(-2px) scale(1.05); }
+.pebble-interactive:hover .pebble-cheeks { opacity: 0.55; }
 
-@media (prefers-reduced-motion: no-preference) {
-  /* ── shared: breathing + blinking (also what `lite` keeps) ── */
-  .pebble-lite .pebble-body { animation: pebble-breathe 4s ease-in-out infinite; animation-delay: var(--pb-blink-d, 0s); }
-  .pebble-anim-idle:not(.pebble-lite) .pebble-body { animation: pebble-breathe 4s ease-in-out infinite; animation-delay: var(--pb-blink-d, 0s); }
-  .pebble-anim-idle:not(.pebble-lite) .pebble-shadow { animation: pebble-shadow-breathe 4s ease-in-out infinite; animation-delay: var(--pb-blink-d, 0s); transform-origin: 50% 50%; }
-  .pebble-anim-idle:not(.pebble-lite) .pebble-glance { animation: pebble-glance 9s ease-in-out infinite; animation-delay: var(--pb-blink-d, 0s); }
-  .pebble-anim-sleeping:not(.pebble-lite) .pebble-body { animation: pebble-sleep-breathe 3.4s ease-in-out infinite; }
-  .pebble-anim-sleeping:not(.pebble-lite) .pebble-shadow { animation: pebble-shadow-breathe 3.4s ease-in-out infinite; transform-origin: 50% 50%; }
-  .pebble-blink { animation: pebble-blink var(--pb-blink, 5s) infinite; animation-delay: var(--pb-blink-d, 0s); transform-origin: 50% 50%; }
-  .pebble-lite .pebble-blink { animation: pebble-blink var(--pb-blink, 5s) infinite; animation-delay: var(--pb-blink-d, 0s); }
-  .pebble-lite .pebble-sprout { animation: none; }
+/* shared: blink + gentle sprout sway (not while sleeping: the sprout droops) */
+.pebble-live .pebble-blink { animation: pebble-blink var(--pb-blink, 5s) infinite; animation-delay: var(--pb-blink-d, 0s); }
+.pebble-live:not([data-status="sleeping"]) .pebble-sprout { animation: pebble-sway 3.6s ease-in-out infinite; animation-delay: var(--pb-sway-d, 0s); }
+/* idle: breathing + an occasional glance around */
+.pebble-live[data-status="idle"] .pebble-body { animation: pebble-breathe 4s ease-in-out infinite; animation-delay: var(--pb-blink-d, 0s); }
+.pebble-live[data-status="idle"] .pebble-glance { animation: pebble-glance 9s ease-in-out infinite; animation-delay: var(--pb-blink-d, 0s); }
+/* thinking: head tilt + "..." dots */
+.pebble-live[data-status="thinking"] .pebble-body { animation: pebble-tilt 2.8s ease-in-out infinite; }
+.pebble-live[data-status="thinking"] .pebble-dot { animation: pebble-dot 1.2s ease-in-out infinite; }
+.pebble-live[data-status="thinking"] .pebble-dot-b { animation-delay: 0.2s; }
+.pebble-live[data-status="thinking"] .pebble-dot-c { animation-delay: 0.4s; }
+/* working: quick bob, busy sprout, flickering action ticks */
+.pebble-live[data-status="working"] .pebble-body { animation: pebble-hustle 0.64s ease-in-out infinite; }
+.pebble-live[data-status="working"] .pebble-sprout { animation-duration: 0.64s; }
+.pebble-live[data-status="working"] .pebble-ticks { animation: pebble-flicker 0.64s ease-in-out infinite; }
+/* waiting for you: sway, the "!" badge pulses and sends out a ring */
+.pebble-live[data-status="waiting_approval"] .pebble-body { animation: pebble-sway-body 1.6s ease-in-out infinite; }
+.pebble-live[data-status="waiting_approval"] .pebble-bang { animation: pebble-bang 1.2s var(--ease-muster) infinite; }
+.pebble-live[data-status="waiting_approval"] .pebble-ring { animation: pebble-ring 1.2s ease-out infinite; }
+/* done: one happy hop + the check pops in, then calm breathing */
+.pebble-live[data-status="done"] .pebble-body { animation: pebble-hop 0.9s var(--ease-muster) 1, pebble-breathe 5s ease-in-out 0.9s infinite; }
+.pebble-live[data-status="done"] .pebble-cheer { animation: pebble-pop-in 0.6s var(--ease-muster) 0.15s both; }
+/* error: a short shake every couple of seconds */
+.pebble-live[data-status="error"] .pebble-body { animation: pebble-quake 2.4s linear infinite; }
+.pebble-live[data-status="error"] .pebble-alert { animation: pebble-bang 2.4s var(--ease-muster) infinite; }
+/* sleeping: slow deep breaths, z's drift up */
+.pebble-live[data-status="sleeping"] .pebble-body { animation: pebble-sleep-breathe 3.4s ease-in-out infinite; }
+.pebble-live[data-status="sleeping"] .pebble-zzz { animation: pebble-zzz 3s ease-in-out infinite; }
+.pebble-live[data-status="sleeping"] .pebble-zzz-b { animation-delay: 1.5s; }
 
-  /* ── sprout sways everywhere except lite / error / sleeping ── */
-  .pebble-anim-idle:not(.pebble-lite) .pebble-sprout,
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-sprout,
-  .pebble-anim-working:not(.pebble-lite) .pebble-sprout,
-  .pebble-anim-waiting_approval:not(.pebble-lite) .pebble-sprout,
-  .pebble-anim-done:not(.pebble-lite) .pebble-sprout { animation: pebble-sway 3.6s ease-in-out infinite; animation-delay: var(--pb-sway-d, 0s); transform-origin: 50% 100%; }
-  .pebble-anim-working:not(.pebble-lite) .pebble-sprout { animation-duration: 0.56s; }
-  .pebble-anim-sleeping:not(.pebble-lite) .pebble-sprout { animation: pebble-sprout-sleep 3.4s ease-in-out infinite; }
-
-  /* ── thinking: tilt, eyes dart left/right, "…" bubble ── */
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-body { animation: pebble-tilt 2.8s ease-in-out infinite; }
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-pupil { animation: pebble-pupil 2.6s ease-in-out infinite; }
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-bubble { animation: pebble-bubble-in 360ms var(--ease) both, pebble-float 2s ease-in-out 360ms infinite; transform-origin: 20% 90%; }
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-dot { animation: pebble-dot 1.2s ease-in-out infinite; transform-origin: 50% 50%; }
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-dot-b { animation-delay: 0.2s; }
-  .pebble-anim-thinking:not(.pebble-lite) .pebble-dot-c { animation-delay: 0.4s; }
-
-  /* ── working: quick hops, focused eyes, speed lines ── */
-  .pebble-anim-working:not(.pebble-lite) .pebble-body { animation: pebble-hustle 0.56s ease-in-out infinite; }
-  .pebble-anim-working:not(.pebble-lite) .pebble-shadow { animation: pebble-shadow-bob 0.56s ease-in-out infinite; transform-origin: 50% 50%; }
-  .pebble-anim-working:not(.pebble-lite) .pebble-ticks { animation: pebble-pulse 0.56s ease-in-out infinite; }
-  .pebble-anim-working:not(.pebble-lite) .pebble-streak { animation: pebble-streak 0.7s ease-out infinite; }
-  .pebble-anim-working:not(.pebble-lite) .pebble-streak-b { animation-delay: 0.2s; }
-  .pebble-anim-working:not(.pebble-lite) .pebble-streak-c { animation-delay: 0.4s; }
-
-  /* ── waiting approval: raised hand waves, "!" pulses ── */
-  .pebble-anim-waiting_approval:not(.pebble-lite) .pebble-body { animation: pebble-sway-body 1.6s ease-in-out infinite; }
-  .pebble-anim-waiting_approval:not(.pebble-lite) .pebble-hand { animation: pebble-wave 0.48s ease-in-out infinite alternate; transform-origin: 40% 95%; }
-  .pebble-anim-waiting_approval:not(.pebble-lite) .pebble-bang { animation: pebble-bang 1.1s var(--ease) infinite; transform-origin: 50% 100%; }
-  .pebble-anim-waiting_approval:not(.pebble-lite) .pebble-ring { animation: pebble-ring 1.1s ease-out infinite; transform-origin: 50% 50%; }
-
-  /* ── done: one happy hop + sparkles that burst once, then a calm smile ── */
-  .pebble-anim-done:not(.pebble-lite) .pebble-body { animation: pebble-hop 0.9s var(--ease) 1, pebble-breathe 5s ease-in-out 0.9s infinite; }
-  .pebble-anim-done:not(.pebble-lite) .pebble-twinkle { animation: pebble-sparkle 1.7s var(--ease) 1 forwards; transform-origin: 50% 50%; opacity: 0; }
-  .pebble-anim-done:not(.pebble-lite) .pebble-twinkle-b { animation-delay: 0.25s; }
-  .pebble-anim-done:not(.pebble-lite) .pebble-twinkle-c { animation-delay: 0.5s; }
-
-  /* ── error: dizzy spiral eyes + quake ── */
-  .pebble-anim-error:not(.pebble-lite) .pebble-body { animation: pebble-quake 2.2s linear infinite; }
-  .pebble-anim-error:not(.pebble-lite) .pebble-swirl { animation: pebble-spin 2.6s linear infinite; transform-origin: 50% 50%; }
-  .pebble-anim-error:not(.pebble-lite) .pebble-spin { animation: pebble-spin 2.4s linear infinite; transform-origin: 50% 50%; }
-
-  /* ── sleeping: Zzz drifts up ── */
-  .pebble-anim-sleeping:not(.pebble-lite) .pebble-zzz { animation: pebble-zzz 3s ease-in-out infinite; }
-  .pebble-anim-sleeping:not(.pebble-lite) .pebble-zzz-b { animation-delay: 1s; }
-  .pebble-anim-sleeping:not(.pebble-lite) .pebble-zzz-c { animation-delay: 2s; }
-
-  /* ── halo ── */
-  .pebble-anim-idle .pebble-halo,
-  .pebble-anim-sleeping .pebble-halo { animation: pebble-halo 4s ease-in-out infinite; transform-origin: 50% 50%; }
-  .pebble-anim-thinking .pebble-halo,
-  .pebble-anim-working .pebble-halo,
-  .pebble-anim-waiting_approval .pebble-halo,
-  .pebble-anim-done .pebble-halo,
-  .pebble-anim-error .pebble-halo { animation: pebble-halo 2.2s ease-in-out infinite; transform-origin: 50% 50%; }
-}
-
-@keyframes pebble-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(calc(1 - 0.01 * var(--pb-k, 1)), calc(1 + 0.03 * var(--pb-k, 1))); } }
-@keyframes pebble-sleep-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(calc(1 + 0.012 * var(--pb-k, 1)), calc(1 + 0.04 * var(--pb-k, 1))); } }
-@keyframes pebble-shadow-breathe { 0%, 100% { transform: scaleX(1); opacity: 0.14; } 50% { transform: scaleX(0.94); opacity: 0.11; } }
-@keyframes pebble-blink { 0%, 91%, 100% { transform: scaleY(1); } 94.5% { transform: scaleY(0.08); } }
-@keyframes pebble-glance { 0%, 38%, 100% { transform: translateX(0); } 42%, 52% { transform: translateX(calc(2.4px * var(--pb-k, 1))); } 56%, 62% { transform: translateX(calc(-2.4px * var(--pb-k, 1))); } 66% { transform: translateX(0); } }
-@keyframes pebble-tilt { 0%, 100% { transform: rotate(calc(-2deg * var(--pb-k, 1))); } 50% { transform: rotate(calc(2.6deg * var(--pb-k, 1))); } }
-@keyframes pebble-pupil { 0%, 100% { transform: translateX(-2.6px); } 50% { transform: translateX(2.6px); } }
-@keyframes pebble-bubble-in { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: scale(1); } }
-@keyframes pebble-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes pebble-dot { 0%, 60%, 100% { transform: translateY(0) scale(0.8); opacity: 0.45; } 30% { transform: translateY(-1.8px) scale(1.15); opacity: 1; } }
-@keyframes pebble-hustle {
-  0%, 100% { transform: translateY(0) scale(calc(1 + 0.04 * var(--pb-k, 1)), calc(1 - 0.05 * var(--pb-k, 1))); }
-  50% { transform: translateY(calc(-4.5px * var(--pb-k, 1))) scale(calc(1 - 0.03 * var(--pb-k, 1)), calc(1 + 0.04 * var(--pb-k, 1))); }
-}
-@keyframes pebble-shadow-bob { 0%, 100% { transform: scaleX(1.04); opacity: 0.16; } 50% { transform: scaleX(0.78); opacity: 0.08; } }
-@keyframes pebble-streak { 0% { transform: translateX(5px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(-6px); opacity: 0; } }
-@keyframes pebble-sway-body { 0%, 100% { transform: rotate(calc(-2deg * var(--pb-k, 1))); } 50% { transform: rotate(calc(2deg * var(--pb-k, 1))); } }
-@keyframes pebble-wave { from { transform: rotate(-16deg); } to { transform: rotate(14deg); } }
-@keyframes pebble-bang { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.22); opacity: 0.85; } }
-@keyframes pebble-ring { 0% { transform: scale(0.7); opacity: 0.8; } 100% { transform: scale(1.6); opacity: 0; } }
-@keyframes pebble-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-@keyframes pebble-hop { 0% { transform: translateY(0) scale(1, 1); } 20% { transform: translateY(0) scale(1.08, 0.9); } 50% { transform: translateY(-9px) scale(0.95, 1.08); } 80% { transform: translateY(0) scale(1.05, 0.95); } 100% { transform: translateY(0) scale(1, 1); } }
-@keyframes pebble-sparkle { 0% { transform: scale(0) rotate(-40deg); opacity: 0; } 35% { transform: scale(1.25) rotate(0); opacity: 1; } 70% { transform: scale(0.95); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.4; } }
-@keyframes pebble-quake { 0%, 14%, 100% { transform: translateX(0) rotate(0); } 2% { transform: translateX(calc(-2px * var(--pb-k, 1))) rotate(-1.5deg); } 4% { transform: translateX(calc(2px * var(--pb-k, 1))) rotate(1.5deg); } 6% { transform: translateX(calc(-2px * var(--pb-k, 1))) rotate(-1deg); } 8% { transform: translateX(calc(1.6px * var(--pb-k, 1))) rotate(1deg); } 10% { transform: translateX(calc(-1px * var(--pb-k, 1))); } 12% { transform: translateX(1px); } }
-@keyframes pebble-spin { to { transform: rotate(360deg); } }
+@keyframes pebble-blink { 0%, 92%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(0.1); } }
+@keyframes pebble-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(4deg); } }
+@keyframes pebble-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(0.99, 1.03); } }
+@keyframes pebble-sleep-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, 1.04); } }
+@keyframes pebble-glance { 0%, 38%, 100% { transform: translateX(0); } 42%, 52% { transform: translateX(2.4px); } 56%, 62% { transform: translateX(-2.4px); } 66% { transform: translateX(0); } }
+@keyframes pebble-tilt { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2.6deg); } }
+@keyframes pebble-dot { 0%, 60%, 100% { transform: translateY(0) scale(0.85); opacity: 0.45; } 30% { transform: translateY(-2px) scale(1.1); opacity: 1; } }
+@keyframes pebble-hustle { 0%, 100% { transform: translateY(0) scale(1.03, 0.96); } 50% { transform: translateY(-4px) scale(0.98, 1.03); } }
+@keyframes pebble-flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes pebble-sway-body { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+@keyframes pebble-bang { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+@keyframes pebble-ring { 0% { transform: scale(0.9); opacity: 0.7; } 100% { transform: scale(1.7); opacity: 0; } }
+@keyframes pebble-hop { 0% { transform: translateY(0) scale(1, 1); } 20% { transform: translateY(0) scale(1.08, 0.9); } 50% { transform: translateY(-8px) scale(0.95, 1.08); } 80% { transform: translateY(0) scale(1.04, 0.96); } 100% { transform: translateY(0) scale(1, 1); } }
+@keyframes pebble-pop-in { 0% { transform: scale(0); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes pebble-quake { 0%, 14%, 100% { transform: translateX(0) rotate(0); } 2% { transform: translateX(-2px) rotate(-1.5deg); } 4% { transform: translateX(2px) rotate(1.5deg); } 6% { transform: translateX(-2px) rotate(-1deg); } 8% { transform: translateX(1.6px) rotate(1deg); } 10% { transform: translateX(-1px); } 12% { transform: translateX(1px); } }
 @keyframes pebble-zzz { 0% { transform: translate(-2px, 5px) scale(0.7); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(4px, -7px) scale(1.1); opacity: 0; } }
-@keyframes pebble-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(calc(4deg * var(--pb-k, 1))); } }
-@keyframes pebble-sprout-sleep { 0%, 100% { transform: rotate(-10deg); } 50% { transform: rotate(-14deg); } }
-@keyframes pebble-halo { 0%, 100% { transform: scale(0.94); opacity: 0.75; } 50% { transform: scale(1.06); opacity: 1; } }
 
-/* Slider (native range, coral fill driven by --muster-slider-pct) */
+/* ───────── Icon micro-interactions (nav icons, avatars, status dots). Off under reduced motion. ───────── */
+.muster-icon { transition: transform 160ms var(--ease-muster); }
+:is(a, button):hover > .muster-icon { transform: scale(1.12); }
+:is(a, button):active > .muster-icon { transform: scale(0.92); }
+[aria-current="page"] > .muster-icon { animation: muster-icon-pop 360ms var(--ease-muster); }
+:is(a, button):hover > .muster-wiggle { animation: muster-wiggle 520ms var(--ease-muster); }
+.muster-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  opacity: 0;
+  animation: muster-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes muster-icon-pop { 0% { transform: scale(1); } 40% { transform: scale(1.22) rotate(-6deg); } 100% { transform: scale(1); } }
+@keyframes muster-wiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-8deg) scale(1.06); } 45% { transform: rotate(7deg) scale(1.06); } 70% { transform: rotate(-3deg); } }
+@keyframes muster-ping { 0% { transform: scale(1); opacity: 0.5; } 75%, 100% { transform: scale(2.4); opacity: 0; } }
+
+/* ───────── Reduce motion: system preference OR the in-app setting (html[data-reduce-motion]) ───────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after { animation: none !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  .muster-icon, .muster-wiggle, .pebble .pebble-pop, .pebble .pebble-look { transform: none !important; }
+}
+html[data-reduce-motion="true"] :is(.muster-icon, .muster-wiggle, .pebble .pebble-pop, .pebble .pebble-look) { transform: none !important; }
+
+/* Slider (native range, accent fill driven by --muster-slider-pct) */
 .muster-slider {
   appearance: none;
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   outline: none;
-  background: linear-gradient(to right, var(--color-coral) var(--muster-slider-pct, 0%), var(--color-line) var(--muster-slider-pct, 0%));
+  background: linear-gradient(to right, var(--color-accent) var(--muster-slider-pct, 0%), var(--color-border) var(--muster-slider-pct, 0%));
 }
 .muster-slider::-webkit-slider-thumb {
   appearance: none;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
   background: #fff;
-  border: 2px solid var(--color-coral);
-  box-shadow: var(--shadow-card);
+  border: 2px solid var(--color-accent);
   cursor: pointer;
-  transition: transform var(--dur-micro) var(--ease);
 }
-.muster-slider::-webkit-slider-thumb:hover { transform: scale(1.12); }
 .muster-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   background: #fff;
-  border: 2px solid var(--color-coral);
-  box-shadow: var(--shadow-card);
+  border: 2px solid var(--color-accent);
   cursor: pointer;
 }
-.muster-slider:focus-visible { outline: 2px solid var(--color-coral); outline-offset: 3px; box-shadow: none; }
+.muster-slider:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .muster-slider:disabled { opacity: 0.5; }
-
-/* Thin scrollbars for overflow areas */
-.muster-scroll { scrollbar-width: thin; scrollbar-color: rgb(166 155 146 / 0.5) transparent; }
-
-/* Toast stack sits above everything */
-.muster-toaster { position: fixed; z-index: 100; }
-
-/* Global: slim, warm scrollbars everywhere (replaces the chunky Windows default with arrow buttons) */
-* { scrollbar-width: thin; scrollbar-color: rgb(166 155 146 / 0.45) transparent; }

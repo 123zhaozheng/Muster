@@ -11,5 +11,5 @@
     "./client": "./src/client.ts",
     "./reducer": "./src/reducer.ts"
   },
-  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run" }
+  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests" }
 }

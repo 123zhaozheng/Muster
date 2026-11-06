@@ -132,6 +132,7 @@ export class ClaudeStreamMapper {
   private readonly cwd: string;
   private readonly tools = new Map<string, { name: string; input: Rec }>();
   private readonly streamed = new Set<string>(); // assistant message ids whose text was already streamed
+  private readonly streamedThinking = new Set<string>(); // assistant message ids whose thinking was already streamed
   private readonly blocks = new Map<number, string>(); // content block index -> type, for the current message
   private msgId = "";
   private interrupting = false;
@@ -196,15 +197,21 @@ export class ClaudeStreamMapper {
       case "content_block_delta": {
         const d = rec(ev.delta);
         const text = str(d?.text);
+        const thinking = str(d?.thinking);
         if (str(d?.type) === "text_delta" && text) {
           this.streamed.add(this.msgId);
           out.push({ t: "text_delta", delta: text });
+        } else if (str(d?.type) === "thinking_delta" && thinking) {
+          this.streamedThinking.add(this.msgId);
+          out.push({ t: "thinking_delta", delta: thinking });
         }
         break;
       }
       case "content_block_stop": {
         const idx = num(ev.index) ?? -1;
-        if (this.blocks.get(idx) === "text") out.push({ t: "text_done" });
+        const type = this.blocks.get(idx);
+        if (type === "text") out.push({ t: "text_done" });
+        else if (type === "thinking") out.push({ t: "thinking_done" });
         this.blocks.delete(idx);
         break;
       }
@@ -229,6 +236,9 @@ export class ClaudeStreamMapper {
         // Only reached with text that was not streamed (partial messages off / missed).
         const text = str(block.text);
         if (text && !this.streamed.has(str(msg.id) ?? "")) out.push({ t: "text_delta", delta: text }, { t: "text_done" });
+      } else if (block.type === "thinking" && topLevel) {
+        const thinking = str(block.thinking);
+        if (thinking && !this.streamedThinking.has(str(msg.id) ?? "")) out.push({ t: "thinking_delta", delta: thinking }, { t: "thinking_done" });
       }
     }
     return out;

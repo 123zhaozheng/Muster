@@ -1,8 +1,8 @@
-// OWNER: W1. 侧栏用到的纯函数，便于单测。
+// 侧栏用到的纯函数，便于单测。
 import { MAIN_THREAD_ID } from "@muster/protocol";
 import type { Approval, Thread } from "@muster/protocol";
 
-export interface RecentThread {
+interface RecentThread {
   id: string;
   title: string;
   /** 线程所属 Bot（用于显示小头像与状态点）。 */

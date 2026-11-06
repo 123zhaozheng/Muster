@@ -1,18 +1,19 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Trash2, Play } from "lucide-react";
 import type { Bot, Device, TriggerMode, TriggerRule } from "@muster/protocol";
-import { Button, ConfirmDialog, Field, Input, Pebble, Segmented, Select, Sheet, SheetClose, SheetContent, Slider, Switch, cn, toast } from "@muster/ui";
+import { Button, ConfirmDialog, Field, Input, Segmented, Select, Drawer, DrawerClose, DrawerContent, Slider, Switch, cn, toast } from "@muster/ui";
 import { hubRequest } from "../../lib/hub";
+import { MemberAvatar } from "../common";
 import { fireTrigger } from "./actions";
-import { CRON_PRESETS, TIMEZONES, checkCron, formatFireTime } from "./cron";
+import { CRON_PRESETS, TIMEZONES, checkCron, formatFireAt } from "./cron";
 import { GITHUB_EVENTS, MODE_LABEL, MODE_META } from "./meta";
-import { SOURCE_STYLE, SourceIcon } from "./SourceIcon";
+import { SourceIcon } from "./SourceIcon";
 
 type RuleSource = TriggerRule["source"];
 
 const SOURCE_OPTIONS: { value: RuleSource; label: string }[] = [
-  { value: "github", label: "GitHub" },
   { value: "cron", label: "定时" },
+  { value: "github", label: "GitHub" },
   { value: "device", label: "设备上线" },
 ];
 
@@ -34,7 +35,7 @@ function draftOf(rule: TriggerRule | undefined, bots: Bot[], devices: Device[]):
   const p = rule?.params ?? {};
   return {
     label: rule?.label ?? "",
-    source: rule?.source ?? "github",
+    source: rule?.source ?? "cron",
     repo: p.repo ?? "",
     event: p.event ?? "pull_request.opened",
     expr: p.expr ?? "0 9 * * *",
@@ -57,7 +58,7 @@ function paramsOf(d: Draft): Record<string, string> {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="space-y-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-faint">{title}</h3>
+      <h3 className="text-sm font-semibold text-fg">{title}</h3>
       {children}
     </section>
   );
@@ -78,12 +79,10 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
   const [showErrors, setShowErrors] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((cur) => ({ ...cur, [k]: v }));
-  const target = bots.find((b) => b.id === d.targetBotId);
-  const style = SOURCE_STYLE[d.source];
   const cron = useMemo(() => (d.source === "cron" ? checkCron(d.expr, d.tz) : null), [d.source, d.expr, d.tz]);
 
   const errors = {
-    label: d.label.trim() ? undefined : "给规则起个名字吧",
+    label: d.label.trim() ? undefined : "给日程起个名字吧",
     repo: d.source === "github" && !d.repo.trim() ? "请填写要监听的仓库" : undefined,
     expr: cron && !cron.ok ? cron.error : undefined,
     device: d.source === "device" && !d.deviceId ? "请选择设备" : undefined,
@@ -96,7 +95,7 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
     value: b.id,
     label: b.name,
     description: b.engineLabel,
-    icon: <Pebble shape={b.shape} color={b.color} status="idle" size={20} lite />,
+    icon: <MemberAvatar bot={{ ...b, status: "idle" }} size={20} />,
   }));
   const githubEvents = GITHUB_EVENTS.some((e) => e.value === d.event) ? GITHUB_EVENTS : [...GITHUB_EVENTS, { value: d.event, label: d.event, description: "自定义事件类型" }];
   const tzOptions = (TIMEZONES.includes(d.tz) || !d.tz ? TIMEZONES : [d.tz, ...TIMEZONES]).map((z) => ({ value: z, label: z }));
@@ -121,7 +120,7 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
           autoDenyApprovalsWhenUnattended: d.autoDeny,
         },
       });
-      toast.success(rule ? "规则已保存" : "规则已创建", { description: trigger.label });
+      toast.success(rule ? "日程已保存" : "日程已创建", { description: trigger.label });
       onSaved?.(trigger);
       onClose();
     } catch (e) {
@@ -141,7 +140,7 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
       toast.error("删除失败", { description: e instanceof Error ? e.message : String(e) });
       throw e;
     }
-    toast.success("规则已删除", { description: rule.label });
+    toast.success("日程已删除", { description: rule.label });
     onDeleted?.();
     onClose();
   }
@@ -152,25 +151,25 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
         <>
           <ConfirmDialog
             tone="danger"
-            title="删除这条触发规则？"
+            title="删除这条日程？"
             description={`「${rule.label}」删除后不会再触发，已产生的事件记录仍会保留。`}
             confirmText="确认删除"
             onConfirm={remove}
             trigger={
-              <Button variant="ghost" className="text-danger hover:text-danger-deep" icon={<Trash2 className="size-4" />}>
+              <Button variant="ghost" className="text-danger hover:text-danger" icon={<Trash2 className="size-4" />}>
                 删除
               </Button>
             }
           />
-          <Button variant="soft" icon={<Play className="size-4" />} disabled={busy} onClick={() => void fireTrigger(rule)}>
+          <Button variant="secondary" icon={<Play className="size-4" />} disabled={busy} onClick={() => void fireTrigger(rule)}>
             试跑
           </Button>
         </>
       )}
       <div className="ml-auto flex items-center gap-2">
-        <SheetClose asChild>
+        <DrawerClose asChild>
           <Button variant="ghost" disabled={busy}>取消</Button>
-        </SheetClose>
+        </DrawerClose>
         <Button variant="primary" loading={busy} onClick={() => void save()}>
           保存
         </Button>
@@ -179,27 +178,9 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
   );
 
   return (
-    <SheetContent
-      width={520}
-      title={rule ? "编辑规则" : "新建规则"}
-      description="当来源满足条件时，把事件交给指定成员处理"
-      footer={footer}
-    >
+    <DrawerContent width={520} title={rule ? "编辑日程" : "新建日程"} description="满足条件时，把事件交给指定成员处理" footer={footer}>
       <div className="space-y-7">
-        <div className={cn("relative flex items-center gap-3 overflow-hidden rounded-card border border-white/70 p-4 pr-3 shadow-soft", style.card)}>
-          <span className={cn("grid size-10 shrink-0 place-items-center rounded-2xl text-white shadow-soft", style.dot)}>
-            <SourceIcon source={d.source} size={20} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-semibold text-ink">{d.label.trim() || "未命名规则"}</div>
-            <div className="truncate text-xs text-ink-soft">
-              交给 {target?.name ?? "—"} · {MODE_LABEL[d.mode]}模式 · 每日最多 {d.dailyBudget} 次
-            </div>
-          </div>
-          {target && <Pebble shape={target.shape} color={target.color} status="idle" size={56} halo title={target.name} />}
-        </div>
-
-        <Group title="触发条件">
+        <Group title="什么时候触发">
           <Field label="名称" htmlFor="tr-label" required error={shown("label")}>
             <Input id="tr-label" placeholder="例如：每周一复盘" value={d.label} aria-invalid={!!shown("label") || undefined} onChange={(e) => set("label", e.target.value)} />
           </Field>
@@ -222,7 +203,7 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
           {d.source === "cron" && (
             <>
               <div className="space-y-2">
-                <div className="text-sm font-medium text-ink">常用频率</div>
+                <div className="text-sm font-medium text-fg">常用频率</div>
                 <div className="flex flex-wrap gap-2">
                   {CRON_PRESETS.map((p) => (
                     <button
@@ -231,8 +212,8 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
                       aria-pressed={d.expr.trim() === p.expr}
                       onClick={() => set("expr", p.expr)}
                       className={cn(
-                        "cursor-pointer rounded-pill border px-3 py-1 text-xs font-medium transition-[background-color,color,border-color,transform] duration-200 active:scale-95",
-                        d.expr.trim() === p.expr ? "border-coral bg-coral-soft text-coral-deep" : "border-line bg-surface text-ink-soft hover:border-ink-faint/50 hover:text-ink",
+                        "h-8 cursor-pointer rounded-control border px-3 text-caption font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-accent/40",
+                        d.expr.trim() === p.expr ? "border-accent bg-accent-surface text-accent" : "border-border bg-surface text-fg-2 hover:bg-surface-muted hover:text-fg",
                       )}
                     >
                       {p.label}
@@ -248,19 +229,18 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
                   <Select id="tr-tz" value={d.tz} onValueChange={(v) => set("tz", v)} options={tzOptions} />
                 </Field>
               </div>
-              <div className="rounded-2xl bg-canvas-deep/70 p-3.5" aria-live="polite" data-testid="cron-preview">
-                <div className="mb-2 text-xs font-medium text-ink-faint">下次运行时间</div>
+              <div className="rounded-control bg-surface-muted p-3.5" aria-live="polite" data-testid="cron-preview">
+                <div className="mb-2 text-xs font-medium text-fg-3">接下来的运行时间{d.tz && `（${d.tz}）`}</div>
                 {cron?.ok ? (
                   <ol className="space-y-1">
                     {cron.next.map((n, i) => (
-                      <li key={n.getTime()} className="flex items-center gap-2 text-sm text-ink">
-                        <span className={cn("size-1.5 rounded-full", i === 0 ? "bg-coral" : "bg-ink-faint/50")} />
-                        <span className={cn("tabular-nums", i === 0 && "font-medium")}>{formatFireTime(n, d.tz)}</span>
+                      <li key={n.getTime()} className={cn("text-sm tabular-nums text-fg", i === 0 && "font-medium")}>
+                        {formatFireAt(n, d.tz)}
                       </li>
                     ))}
                   </ol>
                 ) : (
-                  <div className="text-sm text-ink-faint">表达式有效后，这里会显示接下来的运行时间</div>
+                  <div className="text-sm text-fg-3">表达式有效后，这里会显示接下来的运行时间</div>
                 )}
               </div>
             </>
@@ -273,63 +253,45 @@ function TriggerForm({ rule, bots, devices, onSaved, onDeleted, onClose }: FormP
           )}
         </Group>
 
-        <Group title="处理方式">
+        <Group title="谁来处理">
           <Field label="交给" htmlFor="tr-bot" required error={shown("bot")}>
             <Select id="tr-bot" value={d.targetBotId} onValueChange={(v) => set("targetBotId", v)} placeholder="选择成员" options={botOptions} />
           </Field>
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-ink" id="tr-mode-label">模式</div>
-            <div role="radiogroup" aria-labelledby="tr-mode-label" className="grid grid-cols-3 gap-2.5">
-              {(Object.keys(MODE_LABEL) as TriggerMode[]).map((m) => {
-                const meta = MODE_META[m];
-                const on = d.mode === m;
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    role="radio"
-                    aria-checked={on}
-                    aria-label={MODE_LABEL[m]}
-                    onClick={() => set("mode", m)}
-                    className={cn(
-                      "flex cursor-pointer flex-col items-start gap-1 rounded-2xl border p-3 text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-200 focus-visible:ring-4 focus-visible:ring-coral/20 active:scale-[0.98]",
-                      on ? "border-coral bg-coral-soft/70 shadow-glow-coral" : "border-line bg-surface hover:-translate-y-px hover:border-ink-faint/50 hover:shadow-soft",
-                    )}
-                  >
-                    <span className={cn("grid size-7 place-items-center rounded-lg [&_svg]:size-4", on ? "bg-coral text-white" : "bg-canvas-deep text-ink-soft")}>{meta.icon}</span>
-                    <span className="text-sm font-semibold text-ink" aria-hidden>{MODE_LABEL[m]}</span>
-                    <span className="text-xs leading-snug text-ink-faint" aria-hidden>{meta.hint}</span>
-                  </button>
-                );
-              })}
+          <Field label="模式">
+            <div className="space-y-2">
+              <Segmented
+                value={d.mode}
+                onChange={(v) => set("mode", v)}
+                options={(Object.keys(MODE_LABEL) as TriggerMode[]).map((m) => ({ value: m, label: MODE_LABEL[m], icon: <span className="[&_svg]:size-3.5">{MODE_META[m].icon}</span> }))}
+              />
+              <p className="text-sm text-fg-2" data-testid="mode-detail">
+                {MODE_META[d.mode].detail}
+              </p>
             </div>
-            <p className="rounded-xl bg-canvas-deep/70 px-3 py-2 text-xs leading-relaxed text-ink-soft" data-testid="mode-detail">
-              {MODE_META[d.mode].detail}
-            </p>
-          </div>
+          </Field>
         </Group>
 
         <Group title="安全与预算">
           <Field label="每日预算" htmlFor="tr-budget" hint="每天最多触发的次数，超出后当天不再执行">
             <div className="flex items-center gap-3">
               <Slider id="tr-budget" min={1} max={50} value={d.dailyBudget} onValueChange={(v) => set("dailyBudget", v)} className="min-w-0 flex-1" />
-              <span className="w-16 shrink-0 rounded-pill border border-line bg-surface py-1.5 text-center text-sm tabular-nums">{d.dailyBudget} 次</span>
+              <span className="w-14 shrink-0 text-right text-sm tabular-nums text-fg">{d.dailyBudget} 次</span>
             </div>
           </Field>
 
-          <div className="flex items-start justify-between gap-4 rounded-2xl border border-line bg-surface p-3.5">
+          <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-sm font-medium text-ink">无人值守时自动拒绝审批</div>
-              <div className="mt-0.5 text-xs leading-relaxed text-ink-faint">无人值守触发的任务若需要审批，会直接拒绝，不会等你。</div>
+              <div className="text-sm font-medium text-fg">无人值守时自动拒绝审批</div>
+              <div className="mt-0.5 text-caption text-fg-2">无人值守触发的任务若需要审批，会直接拒绝，不会等你。</div>
             </div>
             <Switch checked={d.autoDeny} onCheckedChange={(v) => set("autoDeny", v)} aria-label="无人值守时自动拒绝审批" />
           </div>
         </Group>
 
-        {saveError && <p role="alert" className="rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger-deep">{saveError}</p>}
+        {saveError && <p role="alert" className="rounded-control bg-danger-surface px-3 py-2 text-sm text-danger">{saveError}</p>}
       </div>
-    </SheetContent>
+    </DrawerContent>
   );
 }
 
@@ -338,11 +300,11 @@ export interface TriggerSheetProps extends Omit<FormProps, "onClose"> {
   onOpenChange: (open: boolean) => void;
 }
 
-/** Create / edit a trigger rule in a right-hand drawer. Mount with a `key` that changes per opening so the draft resets. */
+/** Create / edit a schedule rule in a right-hand drawer. Mount with a `key` that changes per opening so the draft resets. */
 export function TriggerSheet({ open, onOpenChange, ...form }: TriggerSheetProps) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={onOpenChange}>
       <TriggerForm {...form} onClose={() => onOpenChange(false)} />
-    </Sheet>
+    </Drawer>
   );
 }

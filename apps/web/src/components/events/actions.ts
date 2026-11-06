@@ -19,7 +19,7 @@ export async function fireTrigger(rule: Pick<TriggerRule, "id" | "label">): Prom
 export async function setTriggerEnabled(rule: TriggerRule, enabled: boolean): Promise<void> {
   try {
     await hubRequest("trigger.upsert", { trigger: { ...rule, enabled } });
-    toast.success(enabled ? "规则已启用" : "规则已停用", { description: rule.label });
+    toast.success(enabled ? "日程已启用" : "日程已停用", { description: rule.label });
   } catch (e) {
     toast.error("切换失败", { description: msg(e) });
   }

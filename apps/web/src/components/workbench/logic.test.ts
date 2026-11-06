@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Entry } from "@muster/protocol";
 import { entriesByThread } from "@muster/protocol/fixtures";
-import { collectCommands, collectDiffFiles, formatTokens, isBusy, lastTestResult, parseUnifiedDiff, resolveSendMode, steerLabel, taskAvatarStatus, toolSummaryText } from "./logic";
+import { buildMilestones, collectCommands, collectDiffFiles, formatTokens, isBusy, parseUnifiedDiff, resolveSendMode, steerLabel, taskAvatarStatus, toolAction, toolSummaryText } from "./logic";
 
 describe("resolveSendMode", () => {
   it("忙碌：Enter=steer, Alt+Enter=queue, Ctrl/Cmd+Enter=interrupt", () => {
@@ -18,6 +18,7 @@ describe("resolveSendMode", () => {
   it("Shift+Enter、输入法组字、其他按键不发送", () => {
     expect(resolveSendMode({ key: "Enter", shiftKey: true }, true)).toBeNull();
     expect(resolveSendMode({ key: "Enter", isComposing: true }, true)).toBeNull();
+    expect(resolveSendMode({ key: "Enter", keyCode: 229 }, false)).toBeNull();
     expect(resolveSendMode({ key: "a" }, true)).toBeNull();
   });
 });
@@ -33,6 +34,11 @@ describe("文案", () => {
     expect(toolSummaryText({ reads: 6, commands: 2, edits: 0 })).toBe("读取了 6 个文件 · 运行了 2 条命令");
     expect(toolSummaryText({ reads: 4, commands: 1, edits: 1 })).toBe("读取了 4 个文件 · 运行了 1 条命令 · 修改了 1 个文件");
     expect(toolSummaryText({ reads: 0, commands: 0, edits: 0 })).toBe("工具活动");
+  });
+  it("toolAction：工具名换成白话动作，Pip 的管家工具也有中文，不认识的写“调用 <名字>”", () => {
+    expect(["bash", "Read", "apply_patch", "grep", "fetch"].map(toolAction)).toEqual(["运行", "读取", "编辑", "搜索", "访问"]);
+    expect(["route", "web_search", "memory_search", "ask_user"].map(toolAction)).toEqual(["安排工单", "搜索网页", "查记忆", "询问你"]);
+    expect(toolAction("mcp_jira")).toBe("调用 mcp_jira");
   });
   it("formatTokens / isBusy / taskAvatarStatus", () => {
     expect(formatTokens(12_400)).toBe("12.4K");
@@ -77,10 +83,32 @@ describe("汇总", () => {
     ]);
     expect(files.map((f) => [f.path, f.patch])).toEqual([["a.ts", "new"], ["b.ts", ""]]);
   });
-  it("collectCommands 只取命令类 tool；lastTestResult 取最后一次", () => {
+  it("collectCommands 只取命令类 tool", () => {
     const entries = entriesByThread["thread-fix-callback"]!;
     expect(collectCommands(entries).map((c) => c.label)).toEqual(["pnpm test"]);
-    expect(lastTestResult(entries)).toEqual({ passed: 12, failed: 0 });
-    expect(lastTestResult([])).toBeUndefined();
+  });
+});
+
+describe("buildMilestones", () => {
+  it("只取真实发生的节点：改动、测试、确认请求、插话；工具活动和普通消息不算", () => {
+    const entries = entriesByThread["thread-fix-callback"]!;
+    expect(buildMilestones(entries, {}).map((m) => [m.entryId, m.text, m.tone])).toEqual([
+      ["e-wb-3", "已采纳：回调要兼容旧签名", "neutral"],
+      ["e-wb-6", "修改了 1 个文件", "neutral"],
+      ["e-wb-7", "测试全部通过 · 12 通过 · 0 失败", "success"],
+    ]);
+    expect(buildMilestones([], {})).toEqual([]);
+  });
+  it("确认请求带上标题和处理结果；测试失败为 danger", () => {
+    const base = { threadId: "t", ts: "2026-01-01T00:00:00Z" };
+    const entries: Entry[] = [
+      { ...base, id: "a", kind: "approval", approvalId: "ap-1" },
+      { ...base, id: "b", kind: "approval", approvalId: "gone" },
+      { ...base, id: "c", kind: "test_result", botId: "b", passed: 3, failed: 2 },
+    ];
+    const out = buildMilestones(entries, { "ap-1": { title: "阿克需要运行 pnpm install", status: "pending" } });
+    expect(out[0]).toMatchObject({ text: "请求确认：阿克需要运行 pnpm install · 待确认", tone: "warning" });
+    expect(out[1]).toMatchObject({ text: "请求确认", tone: "neutral" });
+    expect(out[2]).toMatchObject({ text: "测试未通过 · 3 通过 · 2 失败", tone: "danger" });
   });
 });
