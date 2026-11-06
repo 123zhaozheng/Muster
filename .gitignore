@@ -1,0 +1,14 @@
+# reference clones (read-only research material)
+repos/
+
+node_modules/
+__pycache__/
+.env
+.env.*
+
+# build output & local runtime data
+dist/
+*.db
+*.db-wal
+*.db-shm
+.pnpm-lock-dir/

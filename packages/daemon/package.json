@@ -1,0 +1,17 @@
+{
+  "name": "@muster/daemon",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": { "musterd": "./src/main.ts" },
+  "scripts": { "dev": "tsx watch src/main.ts", "start": "tsx src/main.ts", "typecheck": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests" },
+  "dependencies": {
+    "@earendil-works/chord": "1.5.0",
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-durable": "1.5.0",
+    "@muster/protocol": "workspace:*",
+    "croner": "latest",
+    "ws": "latest"
+  },
+  "devDependencies": { "@types/ws": "latest" }
+}

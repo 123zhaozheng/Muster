@@ -1,0 +1,10 @@
+{
+  "name": "@muster/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": { "build": "node build.mjs", "dev": "node scripts/dev.mjs", "typecheck": "tsc -p tsconfig.json", "test": "vitest run --passWithNoTests" },
+  "dependencies": { "@muster/protocol": "workspace:*" },
+  "devDependencies": { "electron": "latest", "esbuild": "latest" }
+}

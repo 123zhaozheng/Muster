@@ -1,0 +1,11 @@
+{
+  "href": "file:///D:/code/xuqiu/apps/web/dist/index.html?daemon=ws%3A%2F%2F127.0.0.1%3A7788%2Fws&token=***",
+  "mockFlag": null,
+  "demoChip": false,
+  "connecting": false,
+  "text": "Muster\n主线\n团队\n事件\n设备\n技能\n设置\n需要你\n最近对话\n主线\n刚刚\n修支付回调\n刚刚\n写退款接口\n刚刚\n你好！我是 Pip\n空闲\nPip\n\n你的 AI 任务伙伴，随时为你服务\n\n交给小码修支付回调，交给阿克写退款接口\n\n好的，我来安排一下：\n\n小码\nCodex\n已完成\n修支付回调\n100%\n用时 1 分钟\n阿克\nClaude\n已完成\n写退款接口\n100%\n用时 1 分钟\n顺便跑测试\n完成后通知我\n\n阿克 完成了「写退款接口」 22 通过 · 0 失败 · 改动 1 个文件 搞定了：处理「写退款接口」，改动 1 个文件，22 个测试通过。\n\n小码 完成了「修支付回调」 25 通过 · 0 失败 · 改动 2 个文件 搞定了：修复「修支付回调」，改动 2 个文件，25 个测试通过。\n\nEnter 发送 · Shift+Enter 换行\n进行中\n暂时没有进行中的任务，跟 Pip 说一声就开工。\n需要你\n没有等你处理的事，放心。\n日程\n每日 09:00 晨间简报\n下次 明天 09:00 · 尚未触发\n已连接电脑\n本机",
+  "afterClose": {
+    "destroyed": false,
+    "visible": false
+  }
+}

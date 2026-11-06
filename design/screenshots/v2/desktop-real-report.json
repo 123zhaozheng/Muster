@@ -1,0 +1,155 @@
+{
+  "checks": {
+    "真实模式 daemon 已就绪（非 fake）": {
+      "ok": true
+    },
+    "界面连的是真实 daemon（无演示模式标签）": {
+      "ok": true,
+      "detail": {
+        "href": "file:///D:/code/xuqiu/apps/web/dist/index.html?daemon=ws%3A%2F%2F127.0.0.1%3A62209%2Fws&token=***"
+      }
+    },
+    "未配置模型时主线出现去配置引导": {
+      "ok": true
+    },
+    "providerUpsert 返回 hasApiKey 且不含 key": {
+      "ok": true,
+      "detail": {
+        "pid": "custom-mw4nl8bj2o1cr"
+      }
+    },
+    "model.test 通过": {
+      "ok": true,
+      "detail": {
+        "ok": true,
+        "latencyMs": 525,
+        "reply": "OK"
+      }
+    },
+    "model.test 对不存在的模型返回 ok:false（不抛错）": {
+      "ok": true,
+      "detail": "模型 \"no-such\" 不在服务商 \"假模型（联调）\" 的模型列表中"
+    },
+    "bot.add 原生成员": {
+      "ok": true,
+      "detail": "bot-mw4nl8tu3uw7f"
+    },
+    "设置·模型页显示已配置的服务商": {
+      "ok": true
+    },
+    "团队页出现新成员": {
+      "ok": true
+    },
+    "任务派给了原生成员并完成": {
+      "ok": true,
+      "detail": {
+        "status": "done",
+        "progress": 100,
+        "tokens": 150,
+        "costUsd": 0
+      }
+    },
+    "原生成员的回复来自配置的模型": {
+      "ok": true
+    },
+    "假模型服务收到过原生成员（fake-pro）的请求": {
+      "ok": true,
+      "detail": {
+        "total": 3,
+        "chat": 2,
+        "dispatch": 0,
+        "unauthorized": 0,
+        "models": {
+          "fake-chat": 1,
+          "fake-pro": 1
+        },
+        "lastUserText": "总结一下这个项目的目录结构"
+      }
+    },
+    "Pip 用路由模型（fake-chat）做了 dispatch 并派出新任务": {
+      "ok": true,
+      "detail": {
+        "dispatch": 1,
+        "nBefore": 1,
+        "nAfter": 2
+      }
+    },
+    "没有未授权请求（key 正确传递）": {
+      "ok": true,
+      "detail": 0
+    },
+    "Ctrl+B 收起侧栏（248 -> 72）": {
+      "ok": true,
+      "detail": {
+        "wide": 248,
+        "narrow": 72
+      }
+    },
+    "点击 Logo 回到主线": {
+      "ok": true,
+      "detail": "#/"
+    },
+    "顶部条右侧内容不被系统控制按钮遮挡": {
+      "ok": true,
+      "detail": {
+        "topbarHeight": 56,
+        "rightmostContent": 1295,
+        "viewportWidth": 1440,
+        "paddingRight": "145px",
+        "appRegion": "drag",
+        "titlebarArea": {
+          "x": 0,
+          "width": 1303,
+          "height": 56,
+          "right": 1303
+        },
+        "envRight": "calc(100vw - 0px - 1303px)"
+      }
+    },
+    "顶部条是窗口拖拽区": {
+      "ok": true,
+      "detail": "drag"
+    },
+    "关闭窗口只是隐藏到托盘（页面仍在、不可见）": {
+      "ok": false,
+      "detail": {
+        "alive": false,
+        "vis": "err:CDP Runtime.evaluate 超时"
+      }
+    },
+    "关闭窗口后 daemon 仍在运行": {
+      "ok": true
+    },
+    "退出：Electron 主进程已结束": {
+      "ok": false,
+      "detail": {
+        "code": "timeout",
+        "ms": 23007
+      }
+    },
+    "退出后无残留 electron / daemon 进程": {
+      "ok": true,
+      "detail": []
+    }
+  },
+  "notes": [],
+  "workingShot": true,
+  "topbar": {
+    "topbarHeight": 56,
+    "rightmostContent": 1295,
+    "viewportWidth": 1440,
+    "paddingRight": "145px",
+    "appRegion": "drag",
+    "titlebarArea": {
+      "x": 0,
+      "width": 1303,
+      "height": 56,
+      "right": 1303
+    },
+    "envRight": "calc(100vw - 0px - 1303px)"
+  },
+  "failed": [
+    "关闭窗口只是隐藏到托盘（页面仍在、不可见）",
+    "退出：Electron 主进程已结束"
+  ]
+}
